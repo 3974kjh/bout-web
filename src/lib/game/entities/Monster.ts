@@ -10,13 +10,13 @@ export class Monster {
 	config: MonsterConfig;
 	hp: number;
 	maxHp: number;
-	aiState: MonsterAIState = 'idle';
+	aiState: MonsterAIState = 'chase'; // start chasing immediately
 	id: string;
 
 	private velocityY = 0;
 	private isOnGround = true;
 	private stateTimer = 0;
-	private idleWait: number;
+	private idleWait = 0;
 	private hitActive = false;
 	private flashTimer = 0;
 	private shootTimer = 0;
@@ -25,6 +25,7 @@ export class Monster {
 	private hpBg: THREE.Sprite;
 	private hpBar: THREE.Sprite;
 	private hpBarWidth: number;
+	private lastHpRatio = 1; // track for skip-update optimization
 	private dangerRing!: THREE.Mesh;
 
 	constructor(scene: THREE.Scene, pos: THREE.Vector3, config: MonsterConfig) {
@@ -32,7 +33,6 @@ export class Monster {
 		this.hp = config.hp;
 		this.maxHp = config.hp;
 		this.id = `${config.name}_${Math.random().toString(36).slice(2, 8)}`;
-		this.idleWait = 800 + Math.random() * 2000;
 
 		const m = createMechModel(config.bodyColor, config.accentColor, config.scale);
 		this.group = m.group;
@@ -40,9 +40,16 @@ export class Monster {
 		this.group.position.copy(pos);
 		scene.add(this.group);
 
-		// Danger ring on the ground
+		// Only bosses cast shadows — perf optimization
+		if (!config.isBoss) {
+			this.group.traverse((child) => {
+				if (child instanceof THREE.Mesh) child.castShadow = false;
+			});
+		}
+
+		// Danger ring
 		const ringRadius = config.isRanged ? 3.2 : config.attackRange;
-		const ringGeo = new THREE.RingGeometry(ringRadius * 0.86, ringRadius, 28);
+		const ringGeo = new THREE.RingGeometry(ringRadius * 0.86, ringRadius, 24);
 		const ringMat = new THREE.MeshBasicMaterial({
 			color: config.isRanged ? 0xff6600 : 0xff2200,
 			transparent: true,
@@ -136,16 +143,13 @@ export class Monster {
 
 			case 'rangedAttack': {
 				this.group.lookAt(targetPos.x, this.group.position.y, targetPos.z);
-				// If player is too close, back away via stun
 				if (dist < 2.8) {
 					this.changeState('stun');
 				} else if (dist > this.config.detectionRange * 1.4) {
 					this.changeState('idle');
 				} else if (dist > this.config.attackRange * 1.1) {
-					// Player escaped fire range — chase again
 					this.changeState('chase');
 				}
-				// Fire at interval
 				this.shootTimer += ms;
 				const rate = this.config.fireRateMs ?? 2200;
 				if (this.shootTimer >= rate) {
@@ -162,7 +166,7 @@ export class Monster {
 			}
 
 			case 'stun':
-				if (this.stateTimer > 500) this.changeState('idle');
+				if (this.stateTimer > 500) this.changeState('chase');
 				break;
 		}
 
@@ -171,7 +175,11 @@ export class Monster {
 
 		if (!this.isOnGround) this.velocityY += GRAVITY * dt;
 		this.group.position.y += this.velocityY * dt;
-		const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, this.group.position.y + 2);
+		const gy = stage.getGroundHeight(
+			this.group.position.x,
+			this.group.position.z,
+			this.group.position.y + 2
+		);
 		if (this.group.position.y <= gy) {
 			this.group.position.y = gy;
 			this.velocityY = 0;
@@ -184,7 +192,10 @@ export class Monster {
 		this.group.position.x = Math.max(b.minX, Math.min(b.maxX, this.group.position.x));
 		this.group.position.z = Math.max(b.minZ, Math.min(b.maxZ, this.group.position.z));
 
-		this.animateMonster(dt);
+		// LOD: skip animation for distant monsters
+		if (dist < 30) {
+			this.animateMonster();
+		}
 		this.updateHPBar();
 		this.updateDangerRing();
 	}
@@ -214,20 +225,21 @@ export class Monster {
 		return this.hp <= 0;
 	}
 
-	private animateMonster(dt: number): void {
+	private animateMonster(): void {
 		if (this.aiState === 'chase') {
 			const s = Math.sin(this.stateTimer * 0.008);
-			this.parts.leftLeg.rotation.x = s * 0.4;
-			this.parts.rightLeg.rotation.x = -s * 0.4;
+			// FIXED: negated signs (same fix as player walk)
+			this.parts.leftLeg.rotation.x = -s * 0.4;
+			this.parts.rightLeg.rotation.x = s * 0.4;
 		} else if (this.aiState === 'attack') {
 			const prog = Math.min(1, this.stateTimer / 400);
 			const swing = Math.sin(prog * Math.PI);
-			this.parts.rightArm.rotation.x = -swing * 1.5;
-			this.parts.leftArm.rotation.x = -swing * 0.5;
+			// FIXED: positive → hand swings forward
+			this.parts.rightArm.rotation.x = swing * 1.5;
+			this.parts.leftArm.rotation.x = swing * 0.5;
 		} else if (this.aiState === 'rangedAttack') {
-			// Slight arm raise for shooting pose
-			this.parts.rightArm.rotation.x += (-0.6 - this.parts.rightArm.rotation.x) * 0.15;
-			this.parts.leftArm.rotation.x += (-0.6 - this.parts.leftArm.rotation.x) * 0.15;
+			this.parts.rightArm.rotation.x += (0.6 - this.parts.rightArm.rotation.x) * 0.15;
+			this.parts.leftArm.rotation.x += (0.6 - this.parts.leftArm.rotation.x) * 0.15;
 		} else {
 			this.parts.leftLeg.rotation.x *= 0.85;
 			this.parts.rightLeg.rotation.x *= 0.85;
@@ -238,6 +250,8 @@ export class Monster {
 
 	private updateHPBar(): void {
 		const ratio = Math.max(0, this.hp / this.maxHp);
+		if (Math.abs(ratio - this.lastHpRatio) < 0.005) return; // skip if unchanged
+		this.lastHpRatio = ratio;
 		this.hpBar.scale.x = this.hpBarWidth * ratio;
 	}
 

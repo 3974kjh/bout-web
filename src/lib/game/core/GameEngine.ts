@@ -4,6 +4,7 @@ import { CameraController } from './CameraController';
 import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { Projectile } from '../entities/Projectile';
+import { HealthItem } from '../entities/HealthItem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { TransformSystem } from '../systems/TransformSystem';
 import { WaveSystem } from '../systems/WaveSystem';
@@ -26,6 +27,9 @@ export class GameEngine {
 	private player!: Player;
 	private monsters: Monster[] = [];
 	private projectiles: Projectile[] = [];
+	private items: HealthItem[] = [];
+	private itemSpawnTimer = 0;
+	private readonly itemSpawnInterval = 18; // seconds
 	private stage!: TrainingPlanet;
 	private combat!: CombatSystem;
 	private transform!: TransformSystem;
@@ -65,7 +69,7 @@ export class GameEngine {
 			0.1,
 			200
 		);
-		this.camera.position.set(0, 16, 28);
+		this.camera.position.set(0, 14, 24);
 
 		this.clock = new THREE.Clock();
 		this.input = new InputManager();
@@ -89,7 +93,7 @@ export class GameEngine {
 		const dir = new THREE.DirectionalLight(0xffeedd, 1.3);
 		dir.position.set(15, 30, 15);
 		dir.castShadow = true;
-		dir.shadow.mapSize.set(2048, 2048);
+		dir.shadow.mapSize.set(1024, 1024); // reduced for perf
 		dir.shadow.camera.left = -40;
 		dir.shadow.camera.right = 40;
 		dir.shadow.camera.top = 40;
@@ -111,14 +115,16 @@ export class GameEngine {
 
 		this.monsters = [];
 		this.projectiles = [];
+		this.items = [];
+		this.itemSpawnTimer = this.itemSpawnInterval * 0.4; // first item sooner
 		this.waveSystem = new WaveSystem();
 
-		// Spawn a small initial set of enemies
+		// Spawn a small initial set of enemies (updated scales)
 		const initialConfigs: MonsterConfig[] = [
-			{ name: 'Beta Machine', hp: 35, attack: 7, defense: 3, speed: 3.5, detectionRange: 12, attackRange: 2.5, bodyColor: 0xcc7722, accentColor: 0xddaa44, scale: 0.9 },
-			{ name: 'Beta Machine', hp: 35, attack: 7, defense: 3, speed: 3.5, detectionRange: 12, attackRange: 2.5, bodyColor: 0xcc7722, accentColor: 0xddaa44, scale: 0.9 },
-			{ name: 'Alpha Machine', hp: 30, attack: 8, defense: 2, speed: 4.5, detectionRange: 14, attackRange: 2.2, bodyColor: 0xaa2222, accentColor: 0xcc4444, scale: 0.85 },
-			{ name: 'Alpha Machine', hp: 30, attack: 8, defense: 2, speed: 4.5, detectionRange: 14, attackRange: 2.2, bodyColor: 0xaa2222, accentColor: 0xcc4444, scale: 0.85 }
+			{ name: 'Beta Machine', hp: 35, attack: 7, defense: 3, speed: 3.5, detectionRange: 12, attackRange: 2.5, bodyColor: 0xcc7722, accentColor: 0xddaa44, scale: 1.15 },
+			{ name: 'Beta Machine', hp: 35, attack: 7, defense: 3, speed: 3.5, detectionRange: 12, attackRange: 2.5, bodyColor: 0xcc7722, accentColor: 0xddaa44, scale: 1.15 },
+			{ name: 'Alpha Machine', hp: 30, attack: 8, defense: 2, speed: 4.5, detectionRange: 14, attackRange: 2.2, bodyColor: 0xaa2222, accentColor: 0xcc4444, scale: 1.1 },
+			{ name: 'Alpha Machine', hp: 30, attack: 8, defense: 2, speed: 4.5, detectionRange: 14, attackRange: 2.2, bodyColor: 0xaa2222, accentColor: 0xcc4444, scale: 1.1 }
 		];
 		for (const cfg of initialConfigs) {
 			this.spawnMonster(cfg);
@@ -146,6 +152,7 @@ export class GameEngine {
 			this.handleTransform(dt);
 			this.handleDeaths();
 			this.updateProjectiles(dt);
+			this.updateItems(dt);
 			this.updateWaveSystem(dt);
 			this.checkEnd();
 		}
@@ -218,6 +225,48 @@ export class GameEngine {
 				this.projectiles.splice(i, 1);
 			}
 		}
+	}
+
+	private updateItems(dt: number): void {
+		// Spawn new health items on timer (max 2 active at once)
+		this.itemSpawnTimer += dt;
+		if (this.itemSpawnTimer >= this.itemSpawnInterval && this.items.length < 2) {
+			this.itemSpawnTimer = 0;
+			this.spawnHealthItem();
+		}
+
+		for (let i = this.items.length - 1; i >= 0; i--) {
+			const item = this.items[i];
+			const alive = item.update(dt);
+
+			if (item.tryCollect(this.player.group.position)) {
+				const missing = this.player.stats.maxHp - this.player.stats.hp;
+				const heal = Math.max(1, Math.floor(missing * 0.4));
+				this.player.stats.hp = Math.min(this.player.stats.maxHp, this.player.stats.hp + heal);
+				EventBus.emit('hp-update', {
+					hp: this.player.stats.hp,
+					maxHp: this.player.stats.maxHp
+				});
+				EventBus.emit('damage-number', {
+					pos: this.player.group.position.clone().add(new THREE.Vector3(0, 1.5, 0)),
+					amount: heal,
+					type: 'heal'
+				});
+				item.dispose();
+				this.items.splice(i, 1);
+			} else if (!alive) {
+				item.dispose();
+				this.items.splice(i, 1);
+			}
+		}
+	}
+
+	private spawnHealthItem(): void {
+		const b = this.stage.bounds;
+		const margin = 6;
+		const x = b.minX + margin + Math.random() * (b.maxX - b.minX - margin * 2);
+		const z = b.minZ + margin + Math.random() * (b.maxZ - b.minZ - margin * 2);
+		this.items.push(new HealthItem(this.scene, new THREE.Vector3(x, 0, z)));
 	}
 
 	private updateWaveSystem(dt: number): void {
@@ -311,9 +360,11 @@ export class GameEngine {
 	}
 
 	private restart(): void {
-		// Clean up projectiles
+		// Clean up projectiles and items
 		for (const p of this.projectiles) p.dispose(this.scene);
 		this.projectiles = [];
+		for (const item of this.items) item.dispose();
+		this.items = [];
 
 		this.damageNumbers.clear();
 		while (this.scene.children.length > 0) {
@@ -340,6 +391,7 @@ export class GameEngine {
 		this.input.destroy();
 		this.damageNumbers.destroy();
 		for (const p of this.projectiles) p.dispose(this.scene);
+		for (const item of this.items) item.dispose();
 		this.renderer.dispose();
 		if (this.renderer.domElement.parentElement) {
 			this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);

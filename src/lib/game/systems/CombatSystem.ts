@@ -36,9 +36,19 @@ export class CombatSystem {
 		for (const m of this.monsters) {
 			if (m.isDead() || this.hitSet.has(m.id)) continue;
 
-			// Simple distance check — no angle restriction
-			const dist = this.player.group.position.distanceTo(m.group.position);
-			if (dist > MELEE_RANGE) continue;
+			// Distance check
+			const toEnemy = new THREE.Vector3()
+				.subVectors(m.group.position, this.player.group.position)
+				.setY(0);
+			const distSq = toEnemy.lengthSq();
+			if (distSq > MELEE_RANGE * MELEE_RANGE) continue;
+
+			// Angle check — must be within the forward attack sweep arc (~140°)
+			if (distSq > 0.25) {
+				toEnemy.normalize();
+				const dot = this.player.facing.dot(toEnemy);
+				if (dot < 0.2) continue; // outside ~78° from facing = outside sweep arc
+			}
 
 			const dmg = calculateDamage(atk, m.config.defense);
 			const knockDir = new THREE.Vector3()

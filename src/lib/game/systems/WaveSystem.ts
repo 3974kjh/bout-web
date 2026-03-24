@@ -2,6 +2,7 @@ import type { MonsterConfig } from '$lib/domain/types';
 
 // ── Base monster templates ──────────────────────────────────────────────────
 
+// Scales are 1.3x larger than previous version for bigger enemies
 const BETA_MACHINE: MonsterConfig = {
 	name: 'Beta Machine',
 	hp: 35,
@@ -12,7 +13,7 @@ const BETA_MACHINE: MonsterConfig = {
 	attackRange: 2.5,
 	bodyColor: 0xcc7722,
 	accentColor: 0xddaa44,
-	scale: 0.9
+	scale: 1.15
 };
 
 const ALPHA_MACHINE: MonsterConfig = {
@@ -25,7 +26,7 @@ const ALPHA_MACHINE: MonsterConfig = {
 	attackRange: 2.2,
 	bodyColor: 0xaa2222,
 	accentColor: 0xcc4444,
-	scale: 0.85
+	scale: 1.1
 };
 
 const CHAIN_LABOR: MonsterConfig = {
@@ -38,7 +39,7 @@ const CHAIN_LABOR: MonsterConfig = {
 	attackRange: 2.8,
 	bodyColor: 0x886622,
 	accentColor: 0xaa8844,
-	scale: 1.05
+	scale: 1.35
 };
 
 const SHOOTER_BOT: MonsterConfig = {
@@ -51,7 +52,7 @@ const SHOOTER_BOT: MonsterConfig = {
 	attackRange: 12,
 	bodyColor: 0x226688,
 	accentColor: 0x44aacc,
-	scale: 0.95,
+	scale: 1.2,
 	isRanged: true,
 	projectileSpeed: 9,
 	fireRateMs: 2200
@@ -67,7 +68,7 @@ const HEAVY_TANK: MonsterConfig = {
 	attackRange: 3.2,
 	bodyColor: 0x553366,
 	accentColor: 0x886699,
-	scale: 1.45
+	scale: 1.8
 };
 
 const SNIPER_BOT: MonsterConfig = {
@@ -80,7 +81,7 @@ const SNIPER_BOT: MonsterConfig = {
 	attackRange: 18,
 	bodyColor: 0x224444,
 	accentColor: 0x33aaaa,
-	scale: 0.88,
+	scale: 1.1,
 	isRanged: true,
 	projectileSpeed: 14,
 	fireRateMs: 3200
@@ -162,7 +163,7 @@ export class WaveSystem {
 	}
 
 	get maxAlive(): number {
-		return Math.min(4 + this.wave * 2, 18);
+		return Math.min(4 + this.wave * 2, 10); // capped at 10 for performance
 	}
 
 	onBossSpawned(): void {

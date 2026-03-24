@@ -26,58 +26,60 @@
 	<div class="game-wrapper">
 		<div bind:this={gameContainer} class="game-canvas"></div>
 		<HudOverlay />
-	</div>
-
-	<div class="controls">
-		<span>WASD/←→↑↓ 이동</span>
-		<span>C/Space 점프</span>
-		<span>V 공격</span>
-		<span>X 가드</span>
-		<span>Z 변신</span>
-		<button class="back-btn" onclick={back}>← 메뉴</button>
+		<div class="controls-overlay">
+			<span>WASD 이동</span>
+			<span>C/Space 점프</span>
+			<span>V 공격</span>
+			<span>X 가드</span>
+			<span>Z 변신</span>
+			<button class="back-btn" onclick={back}>← 메뉴</button>
+		</div>
 	</div>
 </div>
 
 <style>
+	:global(body) {
+		margin: 0;
+		overflow: hidden;
+	}
 	.game-page {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		min-height: 100vh;
+		position: fixed;
+		inset: 0;
 		background: #060612;
-		padding: 1rem;
 	}
 	.game-wrapper {
+		width: 100%;
+		height: 100%;
 		position: relative;
-		width: 1024px;
-		max-width: 100%;
-		aspect-ratio: 16 / 9;
-		border: 1px solid rgba(100, 170, 255, 0.2);
-		border-radius: 4px;
 		overflow: hidden;
 	}
 	.game-canvas {
 		width: 100%;
 		height: 100%;
 	}
-	.controls {
+	.controls-overlay {
+		position: absolute;
+		bottom: 10px;
+		left: 14px;
+		right: 14px;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 1rem;
-		margin-top: 0.75rem;
-		color: #778;
-		font-size: 0.8rem;
-		font-family: 'Segoe UI', system-ui, sans-serif;
+		gap: 10px;
 		align-items: center;
+		pointer-events: none;
+		color: rgba(170, 180, 200, 0.65);
+		font-size: 0.72rem;
+		font-family: 'Segoe UI', system-ui, sans-serif;
+		text-shadow: 1px 1px 3px #000;
 	}
 	.back-btn {
+		pointer-events: auto;
 		margin-left: auto;
-		padding: 0.3rem 0.8rem;
-		font-size: 0.8rem;
-		border: 1px solid #445;
-		background: transparent;
-		color: #778;
+		padding: 0.25rem 0.7rem;
+		font-size: 0.72rem;
+		border: 1px solid rgba(100, 130, 170, 0.4);
+		background: rgba(0, 0, 0, 0.5);
+		color: rgba(170, 180, 200, 0.75);
 		border-radius: 4px;
 		cursor: pointer;
 		transition: all 0.2s;

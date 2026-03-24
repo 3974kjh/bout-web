@@ -31,10 +31,6 @@ export class Projectile {
 		this.mesh = new THREE.Mesh(geo, mat);
 		this.mesh.position.copy(pos);
 		scene.add(this.mesh);
-
-		// Small point light for glow
-		const light = new THREE.PointLight(color, 1.5, 3);
-		this.mesh.add(light);
 	}
 
 	update(dt: number): void {

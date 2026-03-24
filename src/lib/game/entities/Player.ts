@@ -14,6 +14,9 @@ import {
 	MELEE_RANGE
 } from '../constants/GameConfig';
 
+// Visual scale for the player mesh (does not affect physics/collision)
+const MODEL_SCALE = 1.5;
+
 export class Player {
 	group: THREE.Group;
 	parts: MechParts3D;
@@ -36,8 +39,11 @@ export class Player {
 	private walkCycle = 0;
 	private scene: THREE.Scene;
 
-	// Attack sweep effect
-	private attackEffect: THREE.Group | null = null;
+	// Attack effect (direct mesh refs for performance — no traverse)
+	private attackEffectGroup: THREE.Group | null = null;
+	private attackSweepGroup: THREE.Group | null = null;
+	private attackRingMesh: THREE.Mesh | null = null;
+	private attackSweepMeshes: THREE.Mesh[] = [];
 	private attackEffectLife = 0;
 	private attackEffectMaxLife = 0;
 	private flashActive = false;
@@ -45,7 +51,7 @@ export class Player {
 	constructor(scene: THREE.Scene, pos: THREE.Vector3, stats: MechStats) {
 		this.scene = scene;
 		this.stats = { ...stats };
-		const m = createMechModel(0x3366ff, 0x5588ff);
+		const m = createMechModel(0x3366ff, 0x5588ff, MODEL_SCALE);
 		this.group = m.group;
 		this.parts = m.parts;
 		this.group.position.copy(pos);
@@ -187,11 +193,9 @@ export class Player {
 		}, 220);
 	}
 
-	/** Spawn a ground ring + sweeping slash planes for the current attack. */
 	private spawnAttackEffect(): void {
-		if (this.attackEffect) {
-			this.group.remove(this.attackEffect);
-			this.attackEffect = null;
+		if (this.attackEffectGroup) {
+			this.group.remove(this.attackEffectGroup);
 		}
 
 		const color = this.transformState === 'transformed' ? 0xffcc00 : 0x66bbff;
@@ -200,8 +204,8 @@ export class Player {
 
 		const effGroup = new THREE.Group();
 
-		// Ground range indicator ring
-		const ringGeo = new THREE.RingGeometry(MELEE_RANGE * 0.88, MELEE_RANGE, 48);
+		// Ground range ring
+		const ringGeo = new THREE.RingGeometry(MELEE_RANGE * 0.88, MELEE_RANGE, 32);
 		const ringMat = new THREE.MeshBasicMaterial({
 			color,
 			transparent: true,
@@ -209,15 +213,15 @@ export class Player {
 			side: THREE.DoubleSide,
 			depthWrite: false
 		});
-		const ring = new THREE.Mesh(ringGeo, ringMat);
-		ring.rotation.x = -Math.PI / 2;
-		ring.position.y = 0.04;
-		ring.userData.baseOpacity = 0.25;
-		effGroup.add(ring);
+		this.attackRingMesh = new THREE.Mesh(ringGeo, ringMat);
+		this.attackRingMesh.rotation.x = -Math.PI / 2;
+		this.attackRingMesh.position.y = 0.04;
+		effGroup.add(this.attackRingMesh);
 
-		// Sweeping slash planes
+		// Sweep planes group (direct refs stored for perf)
 		const sweepGroup = new THREE.Group();
 		sweepGroup.rotation.y = -0.8;
+		this.attackSweepMeshes = [];
 		const fanAngles = [-0.5, -0.25, 0, 0.25, 0.5];
 		for (const angle of fanAngles) {
 			const geo = new THREE.PlaneGeometry(0.24, 2.5);
@@ -235,15 +239,14 @@ export class Player {
 				-Math.cos(angle) * MELEE_RANGE * 0.5
 			);
 			plane.rotation.y = angle;
-			plane.userData.baseOpacity = 0.6;
 			sweepGroup.add(plane);
+			this.attackSweepMeshes.push(plane);
 		}
 
 		effGroup.add(sweepGroup);
-		effGroup.userData.sweepGroup = sweepGroup;
-
+		this.attackSweepGroup = sweepGroup;
+		this.attackEffectGroup = effGroup;
 		this.group.add(effGroup);
-		this.attackEffect = effGroup;
 	}
 
 	isAttackHitFrame(): boolean {
@@ -290,7 +293,11 @@ export class Player {
 		if (!this.isOnGround) this.velocityY += GRAVITY * dt;
 		this.group.position.y += this.velocityY * dt;
 
-		const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, this.group.position.y + 2);
+		const gy = stage.getGroundHeight(
+			this.group.position.x,
+			this.group.position.z,
+			this.group.position.y + 2
+		);
 		if (this.group.position.y <= gy) {
 			this.group.position.y = gy;
 			this.velocityY = 0;
@@ -313,36 +320,40 @@ export class Player {
 
 	private animate(dt: number): void {
 		const p = this.parts;
+
 		if (this.state === 'walking') {
 			this.walkCycle += dt * 10;
 			const s = Math.sin(this.walkCycle);
-			p.leftLeg.rotation.x = s * 0.5;
-			p.rightLeg.rotation.x = -s * 0.5;
-			p.leftArm.rotation.x = -s * 0.3;
-			p.rightArm.rotation.x = s * 0.3;
+			// FIXED: negated signs so legs step forward (same as movement dir)
+			p.leftLeg.rotation.x = -s * 0.5;
+			p.rightLeg.rotation.x = s * 0.5;
+			p.leftArm.rotation.x = s * 0.35;
+			p.rightArm.rotation.x = -s * 0.35;
 		} else if (this.state === 'attacking' && this.activeAttack >= 0) {
 			const dur = ATTACK_DURATIONS_MS[this.activeAttack];
 			const prog = 1 - this.attackTimer / dur;
 			const swing = Math.sin(prog * Math.PI);
 			p.leftLeg.rotation.x = 0;
 			p.rightLeg.rotation.x = 0;
+			// FIXED: positive rotation → hand swings forward toward enemy
 			if (this.activeAttack === 0) {
-				p.rightArm.rotation.x = -swing * 1.6;
+				p.rightArm.rotation.x = swing * 1.6;
 				p.leftArm.rotation.x = 0;
 			} else if (this.activeAttack === 1) {
-				p.leftArm.rotation.x = -swing * 1.6;
+				p.leftArm.rotation.x = swing * 1.6;
 				p.rightArm.rotation.x = 0;
 			} else if (this.activeAttack === 2) {
-				p.rightArm.rotation.x = -swing * 1.8;
-				p.leftArm.rotation.x = -swing * 1.8;
+				p.rightArm.rotation.x = swing * 1.8;
+				p.leftArm.rotation.x = swing * 1.8;
 			} else {
-				p.rightArm.rotation.x = swing * 1.4;
-				p.leftArm.rotation.x = swing * 1.4;
-				p.body.position.y = 1.0 + swing * 0.3;
+				// Combo finisher: wide upward arc
+				p.rightArm.rotation.x = swing * 2.0;
+				p.leftArm.rotation.x = swing * 2.0;
+				p.body.position.y = 1.0 * MODEL_SCALE + swing * 0.3;
 			}
 		} else if (this.state === 'guarding') {
-			p.leftArm.rotation.x = -1.2;
-			p.rightArm.rotation.x = -1.2;
+			p.leftArm.rotation.x = 1.2;
+			p.rightArm.rotation.x = 1.2;
 			p.leftLeg.rotation.x = 0;
 			p.rightLeg.rotation.x = 0;
 		} else {
@@ -350,32 +361,35 @@ export class Player {
 			p.rightArm.rotation.x *= 0.85;
 			p.leftLeg.rotation.x *= 0.85;
 			p.rightLeg.rotation.x *= 0.85;
-			p.body.position.y += (1.0 - p.body.position.y) * 0.15;
+			p.body.position.y += (1.0 * MODEL_SCALE - p.body.position.y) * 0.15;
 		}
 
-		// Animate attack effect sweep
-		if (this.attackEffect) {
+		// Animate attack effect (direct refs, no traverse)
+		if (this.attackEffectGroup) {
 			this.attackEffectLife += dt * 1000;
 			const t = Math.min(1, this.attackEffectLife / this.attackEffectMaxLife);
 
-			// Sweep from left (-0.8) to right (+0.8)
-			const sweep = this.attackEffect.userData.sweepGroup as THREE.Group | undefined;
-			if (sweep) sweep.rotation.y = -0.8 + t * 1.6;
+			if (this.attackSweepGroup) {
+				this.attackSweepGroup.rotation.y = -0.8 + t * 1.6;
+			}
 
-			// Fade out
-			this.attackEffect.traverse((child) => {
-				if (child instanceof THREE.Mesh) {
-					const mat = child.material as THREE.MeshBasicMaterial;
-					if (mat.transparent) {
-						const base = (child.userData.baseOpacity as number) ?? 0.5;
-						mat.opacity = base * Math.max(0, 1 - t * 1.4);
-					}
-				}
-			});
+			const fade = Math.max(0, 1 - t * 1.4);
+			const sweepOpacity = fade * 0.6;
+			const ringOpacity = fade * 0.25;
+
+			for (const m of this.attackSweepMeshes) {
+				(m.material as THREE.MeshBasicMaterial).opacity = sweepOpacity;
+			}
+			if (this.attackRingMesh) {
+				(this.attackRingMesh.material as THREE.MeshBasicMaterial).opacity = ringOpacity;
+			}
 
 			if (t >= 1) {
-				this.group.remove(this.attackEffect);
-				this.attackEffect = null;
+				this.group.remove(this.attackEffectGroup);
+				this.attackEffectGroup = null;
+				this.attackSweepGroup = null;
+				this.attackRingMesh = null;
+				this.attackSweepMeshes = [];
 			}
 		}
 	}
@@ -384,18 +398,22 @@ export class Player {
 
 	setTransformed(on: boolean): void {
 		this.transformState = on ? 'transformed' : 'normal';
-
-		// Cancel pending flash and clear attack effect
 		this.flashActive = false;
-		this.attackEffect = null;
 
-		// Replace model geometry
+		// Clear attack effect refs before clearing group children
+		this.attackEffectGroup = null;
+		this.attackSweepGroup = null;
+		this.attackRingMesh = null;
+		this.attackSweepMeshes = [];
+
 		while (this.group.children.length > 0) {
 			this.group.remove(this.group.children[0]);
 		}
+
 		const { group: newGroup, parts } = on
 			? createTransformedMechModel()
-			: createMechModel(0x3366ff, 0x5588ff);
+			: createMechModel(0x3366ff, 0x5588ff, MODEL_SCALE);
+
 		const children = [...newGroup.children];
 		for (const child of children) {
 			this.group.add(child);
