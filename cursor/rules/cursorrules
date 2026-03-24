@@ -1,0 +1,44 @@
+# BOUT — Cursor Rules
+
+## Project
+한게임 '바우트' 스타일 2D 액션 게임 웹 클론.
+SvelteKit(라우팅/UI) + Phaser 3(게임 루프) + TypeScript + Supabase(Phase 3).
+
+## Docs (먼저 참고)
+- 구조/의존성 → Architecture.md
+- 타입/엔티티 → DomainModels.md
+- API 계약 → API.md
+- 현재 작업 범위 → Project_milestones.md
+
+## Stack rules
+- SvelteKit: 라우팅, UI, 로그인, Supabase 연동
+- Phaser: 전투 루프, 씬, 스프라이트, 충돌, 입력 — Svelte 로직 혼입 금지
+- Svelte ↔ Phaser: 이벤트 버스 또는 명시적 콜백으로만 연결
+- Supabase: `src/lib/supabase/client.ts` 단일 초기화, 씬 내부 직접 사용 금지
+- SCSS: `@use` only, abstracts는 CSS 출력 없음, 테마는 CSS 변수로
+
+## Coding style
+- TypeScript strict, `any` 금지
+- Svelte 컴포넌트: `<script lang="ts">`, PascalCase 파일명
+- Phaser 씬/클래스: PascalCase, 파일 1개 = 클래스 1개
+- 주석은 "왜"만, "무엇"은 코드 이름으로
+
+## Interaction
+- 한 번에 기능 1개 또는 파일 1~2개만 수정/생성
+- `@codebase`는 전역 설계 검토·리팩터링 때만, 평소엔 `@file` 위주
+- 대화 30메시지 초과 시 새 세션 열고 핵심 맥락만 이관
+- 프레임워크 기초 설명 생략 (SvelteKit/Phaser 기본 사용법은 이미 앎)
+- 에러 시 에러 메시지 + 최소 코드 조각만으로 해결책 제시
+
+## Response format
+- 완성된 코드만 출력, 불필요한 설명 생략
+- 기존 파일 수정: 수정된 전체 파일 1회만 출력
+- 새 파일: 첫 줄에 경로 명시 후 코드 전체 출력
+  예) `// src/lib/phaser/scenes/BattleScene.ts`
+- 설명 필요 시 최대 5줄 요약만
+
+## Phase guard
+- Phase 1 (현재): 싱글 전투 코어 — 멀티/Supabase 코드 혼입 금지
+- Phase 2: SvelteKit UI/메뉴/스테이지
+- Phase 3: Supabase 스키마 문서 정의 후 구현 시작
+- 멀티 관련 코드는 `// TODO: MULTI` 주석으로 표시

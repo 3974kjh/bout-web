@@ -1,0 +1,15 @@
+export const GRAVITY = -32;
+export const JUMP_FORCE = 13;
+export const COMBO_WINDOW_MS = 450;
+export const ATTACK_DURATIONS_MS = [220, 220, 280, 380];
+export const ATTACK_COOLDOWN_MS = 350;
+export const GUARD_REDUCE = 0.7;
+export const STUN_MS = 500;
+export const IFRAME_MS = 800;
+export const MELEE_RANGE = 4.5;
+export const PLAYER_RADIUS = 0.45;
+export const STEP_UP_HEIGHT = 0.4;
+export const GAUGE_ON_DEAL = 5;
+export const GAUGE_ON_TAKE = 8;
+export const TRANSFORM_DRAIN_PER_SEC = 18;
+export const TRANSFORM_MULT = { attack: 1.5, defense: 1.3, speed: 1.25 };
