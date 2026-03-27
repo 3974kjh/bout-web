@@ -4,46 +4,46 @@ import type { MonsterConfig } from '$lib/domain/types';
 
 // 적 감지 범위를 크게 넓힘 — 항상 플레이어를 추적하는 느낌
 const BETA_MACHINE: MonsterConfig = {
-	name: '베타 머신', hp: 35, attack: 7, defense: 3, speed: 3.8,
+	name: '베타 머신', hp: 35, attack: 10, defense: 3, speed: 3.8,
 	detectionRange: 70, attackRange: 2.5, bodyColor: 0xcc6611, accentColor: 0xeeaa44, scale: 1.15
 };
 const ALPHA_MACHINE: MonsterConfig = {
-	name: '알파 머신', hp: 30, attack: 9, defense: 2, speed: 5.2,
+	name: '알파 머신', hp: 30, attack: 12, defense: 2, speed: 5.2,
 	detectionRange: 75, attackRange: 2.2, bodyColor: 0xaa1111, accentColor: 0x222222, scale: 1.1
 };
 const FAST_RUSHER: MonsterConfig = {
-	name: '빠른 날쇠', hp: 22, attack: 13, defense: 1, speed: 8.5,
+	name: '빠른 날쇠', hp: 22, attack: 17, defense: 1, speed: 8.5,
 	detectionRange: 80, attackRange: 2.0, bodyColor: 0xff2200, accentColor: 0xff8800, scale: 0.95
 };
 const CHAIN_LABOR: MonsterConfig = {
-	name: '체인 레이버', hp: 60, attack: 13, defense: 5, speed: 3.5,
+	name: '체인 레이버', hp: 60, attack: 17, defense: 5, speed: 3.5,
 	detectionRange: 68, attackRange: 2.8, bodyColor: 0x886622, accentColor: 0xbbaa33, scale: 1.35
 };
 const LASER_BOY: MonsterConfig = {
-	name: '레이저 보이', hp: 45, attack: 11, defense: 3, speed: 3.0,
+	name: '레이저 보이', hp: 45, attack: 14, defense: 3, speed: 3.0,
 	detectionRange: 80, attackRange: 22, bodyColor: 0x1155aa, accentColor: 0x33aaff, scale: 1.2,
-	isRanged: true, projectileSpeed: 13, fireRateMs: 1600
+	isRanged: true, projectileSpeed: 17, fireRateMs: 1600
 };
 const BOMB_DRONE: MonsterConfig = {
-	name: '폭격 드론', hp: 28, attack: 9, defense: 1, speed: 4.8,
+	name: '폭격 드론', hp: 28, attack: 12, defense: 1, speed: 4.8,
 	detectionRange: 78, attackRange: 20, bodyColor: 0x223322, accentColor: 0x44ff44, scale: 1.05,
-	isRanged: true, projectileSpeed: 16, fireRateMs: 900
+	isRanged: true, projectileSpeed: 20, fireRateMs: 900
 };
 const TOUGH_GUY_Z: MonsterConfig = {
-	name: '터프가이 Z', hp: 110, attack: 18, defense: 9, speed: 2.5,
+	name: '터프가이 Z', hp: 110, attack: 23, defense: 9, speed: 2.5,
 	detectionRange: 65, attackRange: 3.2, bodyColor: 0x553366, accentColor: 0x886699, scale: 1.8
 };
 const CARGO_GUARD: MonsterConfig = {
-	name: '화물 파수꾼', hp: 35, attack: 16, defense: 2, speed: 2.2,
+	name: '화물 파수꾼', hp: 35, attack: 20, defense: 2, speed: 2.2,
 	detectionRange: 90, attackRange: 32, bodyColor: 0x112233, accentColor: 0x22aaaa, scale: 1.1,
-	isRanged: true, projectileSpeed: 18, fireRateMs: 2200
+	isRanged: true, projectileSpeed: 22, fireRateMs: 2200
 };
 const ARMOR_GOLEM: MonsterConfig = {
-	name: '장갑 골렘', hp: 200, attack: 22, defense: 15, speed: 2.0,
+	name: '장갑 골렘', hp: 200, attack: 28, defense: 15, speed: 2.0,
 	detectionRange: 65, attackRange: 3.0, bodyColor: 0x2a2a2a, accentColor: 0x888888, scale: 2.0
 };
 const DEATH_STALKER: MonsterConfig = {
-	name: '죽음의 낫', hp: 40, attack: 25, defense: 2, speed: 10.0,
+	name: '죽음의 낫', hp: 40, attack: 32, defense: 2, speed: 10.0,
 	detectionRange: 90, attackRange: 2.2, bodyColor: 0x110011, accentColor: 0xff00ff, scale: 1.0
 };
 
@@ -68,21 +68,21 @@ const BOSS_TEMPLATES: Array<Omit<MonsterConfig, 'hp' | 'attack' | 'defense'>> = 
 		name: '철갑 드래곤', speed: 2.8, detectionRange: 120, attackRange: 22,
 		bodyColor: 0x1a2a1a, accentColor: 0x00ff88, scale: 3.8, isBoss: true,
 		bossAnimalType: 'dragon',
-		isRanged: true, projectileSpeed: 15, fireRateMs: 1200,
+		isRanged: true, projectileSpeed: 19, fireRateMs: 1200,
 		aoeRadius: 11, aoeFillMs: 1900, aoeCooldownMs: 6000
 	},
 	{
 		name: '사이버 호랑이', speed: 5.5, detectionRange: 120, attackRange: 20,
 		bodyColor: 0x552200, accentColor: 0xff5500, scale: 3.6, isBoss: true,
 		bossAnimalType: 'tiger',
-		isRanged: true, projectileSpeed: 16, fireRateMs: 1000,
+		isRanged: true, projectileSpeed: 20, fireRateMs: 1000,
 		aoeRadius: 9,  aoeFillMs: 1600, aoeCooldownMs: 5500
 	},
 	{
 		name: '아이언 로드', speed: 4.0, detectionRange: 130, attackRange: 24,
 		bodyColor: 0x1a1a1a, accentColor: 0xff2200, scale: 4.2, isBoss: true,
 		bossAnimalType: 'ironlord',
-		isRanged: true, projectileSpeed: 18, fireRateMs: 700,
+		isRanged: true, projectileSpeed: 23, fireRateMs: 700,
 		aoeRadius: 13, aoeFillMs: 1400, aoeCooldownMs: 4500
 	}
 ];

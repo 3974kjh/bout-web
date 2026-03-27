@@ -95,6 +95,9 @@ export const SCORE_LEVEL_FACTOR = 72;
 /** 생존 1초당 기본 점수 (가중 전) */
 export const SCORE_TIME_FACTOR = 6;
 
+/** 이 시간(초)까지 생존하면 승리 */
+export const VICTORY_SURVIVAL_SECONDS = 20 * 60;
+
 /** 보스 처치 항 가중치 (가장 큼) */
 export const SCORE_W_BOSS = 1.35;
 /** 레벨 달성 항 가중치 */

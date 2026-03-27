@@ -1,7 +1,7 @@
 /**
  * 진화 메카 form 0~8 — 기체별로 완전히 다른 기하 언어
  * - hypersuit: 직육면체(Box) 위주
- * - azonas-v: 삼각·원뿔(Octahedron / Cone / Cylinder 3seg) 위주
+ * - azonas-v: 정팔면체(Octahedron) 몸통 + 삼각·원뿔 부착
  * - geren: 구·타원체·부드러운 원통(Sphere / 고분할 Cylinder) 위주
  */
 import * as THREE from 'three';
@@ -20,6 +20,23 @@ function normalizeMechGroupGround(group: THREE.Object3D): void {
 			child.position.y -= minY;
 		}
 	}
+}
+
+/** 몸통 메쉬 하단과 고관절이 맞닿도록 (절차형 진화 전용) */
+function hipAttachHypersuit(s: number): number {
+	return MECH_BODY_Y * s - 0.3 * s;
+}
+function hipAttachAzonas(s: number): number {
+	return MECH_BODY_Y * s - 0.44 * s;
+}
+function hipAttachGeren(s: number): number {
+	return MECH_BODY_Y * s - 0.38 * s * 0.88;
+}
+
+/** Form별 허벅지 세그먼트 길이 — 고관절 정렬 이전 대비 다리를 더 길게 */
+function legLenForForm(f: number): number {
+	const base = f === 3 ? 0.28 : f === 4 ? 0.55 : f <= 6 ? 0.8 : 0.92;
+	return base * 1.8;
 }
 
 const FORM_STYLE = [
@@ -158,13 +175,15 @@ function buildEvolvedHypersuit(f: number, s: number): { group: THREE.Group; part
 		}
 	}
 	if (f >= 4) {
-		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.22 * s, 4), bodyMat.clone());
-		neck.position.y = 2.14 * s;
+		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 0.24 * s, 4), bodyMat.clone());
+		neck.position.y = 2.1 * s;
 		group.add(neck);
 	}
 	if (f >= 4) {
-		const waist = new THREE.Mesh(new THREE.BoxGeometry(0.58 * s, 0.18 * s, 0.44 * s), bodyMat.clone());
-		waist.position.y = 1.28 * s;
+		const hipY = hipAttachHypersuit(s);
+		const waistH = 0.18 * s;
+		const waist = new THREE.Mesh(new THREE.BoxGeometry(0.58 * s, waistH, 0.44 * s), bodyMat.clone());
+		waist.position.y = hipY - waistH / 2;
 		group.add(waist);
 	}
 	if (f >= 5) {
@@ -215,24 +234,26 @@ function buildEvolvedHypersuit(f: number, s: number): { group: THREE.Group; part
 	}
 
 	if (f >= 3) {
-		const lLen = f === 3 ? 0.28 : f === 4 ? 0.55 : f <= 6 ? 0.8 : 0.92;
+		const lLen = legLenForForm(f);
+		const hipY = hipAttachHypersuit(s);
+		const thW = 0.23 * s;
 		for (const [side, lg] of [
 			[-1, leftLeg],
 			[1, rightLeg]
 		] as [number, THREE.Group][]) {
-			lg.position.set(side * 0.18 * s, (1.15 - lLen * 0.5) * s, 0);
+			lg.position.set(side * 0.18 * s, hipY, 0);
 			group.add(lg);
-			const th = new THREE.Mesh(new THREE.BoxGeometry(0.2 * s, lLen * s, 0.2 * s), bodyMat.clone());
+			const th = new THREE.Mesh(new THREE.BoxGeometry(thW, lLen * s, thW), bodyMat.clone());
 			th.position.y = -(lLen / 2) * s;
 			th.castShadow = true;
 			lg.add(th);
 			if (f >= 6) {
-				const kn = new THREE.Mesh(new THREE.BoxGeometry(0.24 * s, 0.14 * s, 0.22 * s), accentMat.clone());
+				const kn = new THREE.Mesh(new THREE.BoxGeometry(0.26 * s, 0.15 * s, 0.24 * s), accentMat.clone());
 				kn.position.set(0, -(lLen * 0.38) * s, -0.06 * s);
 				lg.add(kn);
 			}
 			if (f >= 5) {
-				const ft = new THREE.Mesh(new THREE.BoxGeometry(0.22 * s, 0.12 * s, 0.28 * s), bodyMat.clone());
+				const ft = new THREE.Mesh(new THREE.BoxGeometry(0.25 * s, 0.13 * s, 0.3 * s), bodyMat.clone());
 				ft.position.set(0, -(lLen + 0.04) * s, -0.04 * s);
 				lg.add(ft);
 			}
@@ -307,24 +328,34 @@ function buildEvolvedAzonas(f: number, s: number): { group: THREE.Group; parts: 
 	const rightLeg = new THREE.Group();
 
 	if (f === 0) {
-		const r = 0.46 * s;
-		const oct = new THREE.Mesh(new THREE.OctahedronGeometry(r, 0), bodyMat);
-		oct.position.y = r;
-		oct.castShadow = true;
-		group.add(oct);
-		[head, leftArm, rightArm, leftLeg, rightLeg].forEach((g) => group.add(g));
+		const r = 0.36 * s;
+		const torso = new THREE.Mesh(new THREE.OctahedronGeometry(r, 0), bodyMat);
+		torso.position.y = r;
+		torso.castShadow = true;
+		group.add(torso);
+		[head, leftArm, rightArm, leftLeg, rightLeg].forEach((gch) => group.add(gch));
 		return {
 			group,
-			parts: { head, body: oct, leftArm, rightArm, leftLeg, rightLeg, bodyMat, accentMat, bodyTargetY: r }
+			parts: {
+				head,
+				body: torso,
+				leftArm,
+				rightArm,
+				leftLeg,
+				rightLeg,
+				bodyMat,
+				accentMat,
+				bodyTargetY: torso.position.y
+			}
 		};
 	}
 
 	if (f === 1) {
 		const r = 0.4 * s;
-		const oct = new THREE.Mesh(new THREE.OctahedronGeometry(r, 0), bodyMat);
-		oct.position.y = r;
-		oct.castShadow = true;
-		group.add(oct);
+		const torso = new THREE.Mesh(new THREE.OctahedronGeometry(r, 0), bodyMat);
+		torso.position.y = r;
+		torso.castShadow = true;
+		group.add(torso);
 		const hm = new THREE.Mesh(new THREE.ConeGeometry(0.14 * s, 0.26 * s, TRI), bodyMat.clone());
 		hm.position.y = 0.13 * s;
 		head.position.y = 0.92 * s;
@@ -344,13 +375,24 @@ function buildEvolvedAzonas(f: number, s: number): { group: THREE.Group; parts: 
 		group.add(rightLeg);
 		return {
 			group,
-			parts: { head, body: oct, leftArm, rightArm, leftLeg, rightLeg, bodyMat, accentMat, bodyTargetY: r }
+			parts: {
+				head,
+				body: torso,
+				leftArm,
+				rightArm,
+				leftLeg,
+				rightLeg,
+				bodyMat,
+				accentMat,
+				bodyTargetY: torso.position.y
+			}
 		};
 	}
 
-	const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.34 * s, 0.38 * s, 0.58 * s, TRI), bodyMat);
+	// 정팔면체 꼭짓점 (±r,0,0) = 팔 X(±0.44s)
+	const r = 0.44 * s;
+	const torso = new THREE.Mesh(new THREE.OctahedronGeometry(r, 0), bodyMat);
 	torso.position.y = MECH_BODY_Y * s;
-	torso.rotation.y = Math.PI / 6;
 	torso.castShadow = true;
 	group.add(torso);
 	const body = torso;
@@ -389,13 +431,15 @@ function buildEvolvedAzonas(f: number, s: number): { group: THREE.Group; parts: 
 		}
 	}
 	if (f >= 4) {
-		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * s, 0.11 * s, 0.22 * s, TRI), bodyMat.clone());
-		neck.position.y = 2.14 * s;
+		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * s, 0.11 * s, 0.24 * s, TRI), bodyMat.clone());
+		neck.position.y = 2.1 * s;
 		group.add(neck);
 	}
 	if (f >= 4) {
-		const waist = new THREE.Mesh(new THREE.CylinderGeometry(0.3 * s, 0.34 * s, 0.16 * s, TRI), bodyMat.clone());
-		waist.position.y = 1.28 * s;
+		const hipY = hipAttachAzonas(s);
+		const waistH = 0.16 * s;
+		const waist = new THREE.Mesh(new THREE.CylinderGeometry(0.3 * s, 0.34 * s, waistH, TRI), bodyMat.clone());
+		waist.position.y = hipY - waistH / 2;
 		group.add(waist);
 	}
 	if (f >= 5) {
@@ -447,24 +491,26 @@ function buildEvolvedAzonas(f: number, s: number): { group: THREE.Group; parts: 
 	}
 
 	if (f >= 3) {
-		const lLen = f === 3 ? 0.28 : f === 4 ? 0.55 : f <= 6 ? 0.8 : 0.92;
+		const lLen = legLenForForm(f);
+		const hipY = hipAttachAzonas(s);
+		const aR = 0.125 * s;
 		for (const [side, lg] of [
 			[-1, leftLeg],
 			[1, rightLeg]
 		] as [number, THREE.Group][]) {
-			lg.position.set(side * 0.17 * s, (1.15 - lLen * 0.5) * s, 0);
+			lg.position.set(side * 0.17 * s, hipY, 0);
 			group.add(lg);
-			const th = new THREE.Mesh(new THREE.ConeGeometry(0.11 * s, lLen * s, TRI), bodyMat.clone());
+			const th = new THREE.Mesh(new THREE.ConeGeometry(aR, lLen * s, TRI), bodyMat.clone());
 			th.position.y = -(lLen / 2) * s;
 			th.castShadow = true;
 			lg.add(th);
 			if (f >= 6) {
-				const kn = new THREE.Mesh(new THREE.ConeGeometry(0.14 * s, 0.16 * s, TRI), accentMat.clone());
+				const kn = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 0.17 * s, TRI), accentMat.clone());
 				kn.position.set(0, -(lLen * 0.38) * s, -0.05 * s);
 				lg.add(kn);
 			}
 			if (f >= 5) {
-				const ft = new THREE.Mesh(new THREE.ConeGeometry(0.12 * s, 0.14 * s, TRI), bodyMat.clone());
+				const ft = new THREE.Mesh(new THREE.ConeGeometry(0.13 * s, 0.15 * s, TRI), bodyMat.clone());
 				ft.position.set(0, -(lLen + 0.04) * s, -0.04 * s);
 				ft.rotation.x = Math.PI / 2;
 				lg.add(ft);
@@ -617,14 +663,15 @@ function buildEvolvedGeren(f: number, s: number): { group: THREE.Group; parts: M
 		}
 	}
 	if (f >= 4) {
-		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.12 * s, 0.22 * s, SMO), bodyMat.clone());
-		neck.position.y = 2.14 * s;
+		const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.12 * s, 0.24 * s, SMO), bodyMat.clone());
+		neck.position.y = 2.1 * s;
 		group.add(neck);
 	}
 	if (f >= 4) {
+		const hipY = hipAttachGeren(s);
 		const waist = new THREE.Mesh(new THREE.TorusGeometry(0.32 * s, 0.07 * s, 10, SMO), bodyMat.clone());
 		waist.rotation.x = Math.PI / 2;
-		waist.position.y = 1.28 * s;
+		waist.position.y = hipY - 0.06 * s;
 		group.add(waist);
 	}
 	if (f >= 5) {
@@ -676,25 +723,28 @@ function buildEvolvedGeren(f: number, s: number): { group: THREE.Group; parts: M
 	}
 
 	if (f >= 3) {
-		const lLen = f === 3 ? 0.28 : f === 4 ? 0.55 : f <= 6 ? 0.8 : 0.92;
+		const lLen = legLenForForm(f);
+		const hipY = hipAttachGeren(s);
+		const lr = 0.125 * s;
+		const lrLo = 0.115 * s;
 		for (const [side, lg] of [
 			[-1, leftLeg],
 			[1, rightLeg]
 		] as [number, THREE.Group][]) {
-			lg.position.set(side * 0.18 * s, (1.15 - lLen * 0.5) * s, 0);
+			lg.position.set(side * 0.18 * s, hipY, 0);
 			group.add(lg);
-			const th = new THREE.Mesh(new THREE.CylinderGeometry(0.11 * s, 0.1 * s, lLen * s, SMO), bodyMat.clone());
+			const th = new THREE.Mesh(new THREE.CylinderGeometry(lr, lrLo, lLen * s, SMO), bodyMat.clone());
 			th.position.y = -(lLen / 2) * s;
 			th.castShadow = true;
 			lg.add(th);
 			if (f >= 6) {
-				const kn = new THREE.Mesh(new THREE.SphereGeometry(0.14 * s, 10, 8), accentMat.clone());
+				const kn = new THREE.Mesh(new THREE.SphereGeometry(0.15 * s, 10, 8), accentMat.clone());
 				kn.position.set(0, -(lLen * 0.38) * s, -0.05 * s);
 				lg.add(kn);
 			}
 			if (f >= 5) {
-				const ft = new THREE.Mesh(new THREE.SphereGeometry(0.13 * s, 10, 8), bodyMat.clone());
-				ft.scale.set(1.1, 0.55, 1.2);
+				const ft = new THREE.Mesh(new THREE.SphereGeometry(0.14 * s, 10, 8), bodyMat.clone());
+				ft.scale.set(1.12, 0.58, 1.22);
 				ft.position.set(0, -(lLen + 0.04) * s, -0.04 * s);
 				lg.add(ft);
 			}

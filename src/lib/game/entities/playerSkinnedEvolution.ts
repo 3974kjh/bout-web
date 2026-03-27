@@ -4,10 +4,11 @@ import { formEvolutionEmissive, formStyleColors } from './MechModel';
 import { deepDisposePlayerGraph } from './playerSkinned';
 import { WING_GLIDE_MIN_FORM } from '../constants/GameConfig';
 
-/** Player.group 직하위 — GLTF와 형제 (링·부스터·날개) */
+/** Player.group 직하위 — GLTF와 형제 (부착 모듈·부스터·날개) */
 export const SKINNED_EVO_DECO = 'skinnedEvoDeco';
 
-const RINGS_SUBGROUP = 'skinnedEvoRings';
+/** 링(토러스) 대신 팔·다리·머리에 부착되는 모듈 그룹 */
+const LIMB_ATTACH_SUBGROUP = 'skinnedEvoLimbAttach';
 const BOOST_SUBGROUP = 'skinnedEvoBoosters';
 const WING_SUBGROUP = 'skinnedEvoWings';
 
@@ -19,42 +20,53 @@ function evolutionBlendT(form: number, level: number): number {
 	return Math.min(1, tLv * 0.52 + tForm * 0.48);
 }
 
-/** 레벨·Form에 따라 켜지는 링 슬롯 (위치·자세는 휴머노이드 ~2.85m 기준, 전방 -Z) */
-const RING_SLOTS: ReadonlyArray<{
+type LimbAttachKind =
+	| 'coreStrap'
+	| 'shoulderHousing'
+	| 'spineModule'
+	| 'upperArmHarness'
+	| 'thighPlate'
+	| 'anklePod'
+	| 'crownSensor'
+	| 'sternumPack'
+	| 'templeFin'
+	| 'collarEmitter';
+
+/** 레벨·Form에 따라 켜지는 부착 슬롯 (휴머노이드 ~2.85m, 전방 -Z) — 토러스 링 대신 기계 모듈 */
+const LIMB_ATTACH_SLOTS: ReadonlyArray<{
 	pos: [number, number, number];
 	rot: [number, number, number];
-	R: number;
-	tube: number;
 	minForm: number;
 	minLevel: number;
+	kind: LimbAttachKind;
 }> = [
-	{ pos: [0, 1.04, 0], rot: [Math.PI / 2, 0, 0], R: 0.37, tube: 0.011, minForm: 1, minLevel: 2 },
-	{ pos: [0, 1.38, -0.05], rot: [Math.PI / 2, 0.12, 0], R: 0.34, tube: 0.01, minForm: 1, minLevel: 4 },
-	{ pos: [0, 1.62, 0.02], rot: [Math.PI / 2, -0.08, 0], R: 0.32, tube: 0.009, minForm: 2, minLevel: 5 },
-	{ pos: [-0.44, 1.9, 0.02], rot: [0, 0, Math.PI / 2], R: 0.1, tube: 0.007, minForm: 2, minLevel: 6 },
-	{ pos: [0.44, 1.9, 0.02], rot: [0, 0, Math.PI / 2], R: 0.1, tube: 0.007, minForm: 2, minLevel: 6 },
-	{ pos: [0, 1.78, -0.18], rot: [Math.PI / 2, 0.35, 0], R: 0.22, tube: 0.008, minForm: 3, minLevel: 7 },
-	{ pos: [-0.58, 1.28, -0.06], rot: [0.25, 0, Math.PI / 2], R: 0.062, tube: 0.0055, minForm: 3, minLevel: 8 },
-	{ pos: [0.58, 1.28, -0.06], rot: [0.25, 0, Math.PI / 2], R: 0.062, tube: 0.0055, minForm: 3, minLevel: 8 },
-	{ pos: [-0.2, 0.76, 0.04], rot: [Math.PI / 2, 0, 0.22], R: 0.13, tube: 0.0065, minForm: 4, minLevel: 9 },
-	{ pos: [0.2, 0.76, 0.04], rot: [Math.PI / 2, 0, -0.22], R: 0.13, tube: 0.0065, minForm: 4, minLevel: 9 },
-	{ pos: [-0.14, 0.14, 0.05], rot: [Math.PI / 2, 0.35, 0], R: 0.075, tube: 0.0045, minForm: 4, minLevel: 11 },
-	{ pos: [0.14, 0.14, 0.05], rot: [Math.PI / 2, -0.35, 0], R: 0.075, tube: 0.0045, minForm: 4, minLevel: 11 },
-	{ pos: [0, 2.12, -0.08], rot: [Math.PI / 2, 0, 0], R: 0.14, tube: 0.006, minForm: 5, minLevel: 12 },
-	{ pos: [0, 2.42, -0.04], rot: [Math.PI / 2, 0.2, 0], R: 0.18, tube: 0.0065, minForm: 5, minLevel: 14 },
-	{ pos: [0, 2.72, 0], rot: [Math.PI / 2, 0, 0], R: 0.4, tube: 0.009, minForm: 6, minLevel: 15 },
-	{ pos: [0, 0.92, 0.22], rot: [0.85, 0, 0], R: 0.28, tube: 0.007, minForm: 6, minLevel: 16 },
-	{ pos: [-0.32, 1.55, 0.12], rot: [0.5, 0.4, 0.5], R: 0.16, tube: 0.006, minForm: 7, minLevel: 17 },
-	{ pos: [0.32, 1.55, 0.12], rot: [0.5, -0.4, -0.5], R: 0.16, tube: 0.006, minForm: 7, minLevel: 17 },
-	{ pos: [0, 1.22, 0.18], rot: [0.65, 0, 0], R: 0.31, tube: 0.008, minForm: 8, minLevel: 19 }
+	{ pos: [0, 1.04, 0], rot: [Math.PI / 2, 0, 0], minForm: 1, minLevel: 2, kind: 'coreStrap' },
+	{ pos: [0, 1.38, -0.05], rot: [Math.PI / 2, 0.12, 0], minForm: 1, minLevel: 4, kind: 'sternumPack' },
+	{ pos: [0, 1.62, 0.02], rot: [Math.PI / 2, -0.08, 0], minForm: 2, minLevel: 5, kind: 'coreStrap' },
+	{ pos: [-0.44, 1.9, 0.02], rot: [0, 0, Math.PI / 2], minForm: 2, minLevel: 6, kind: 'shoulderHousing' },
+	{ pos: [0.44, 1.9, 0.02], rot: [0, 0, Math.PI / 2], minForm: 2, minLevel: 6, kind: 'shoulderHousing' },
+	{ pos: [0, 1.78, -0.18], rot: [Math.PI / 2, 0.35, 0], minForm: 3, minLevel: 7, kind: 'spineModule' },
+	{ pos: [-0.58, 1.28, -0.06], rot: [0.25, 0, Math.PI / 2], minForm: 3, minLevel: 8, kind: 'upperArmHarness' },
+	{ pos: [0.58, 1.28, -0.06], rot: [0.25, 0, Math.PI / 2], minForm: 3, minLevel: 8, kind: 'upperArmHarness' },
+	{ pos: [-0.2, 0.76, 0.04], rot: [Math.PI / 2, 0, 0.22], minForm: 4, minLevel: 9, kind: 'thighPlate' },
+	{ pos: [0.2, 0.76, 0.04], rot: [Math.PI / 2, 0, -0.22], minForm: 4, minLevel: 9, kind: 'thighPlate' },
+	{ pos: [-0.14, 0.14, 0.05], rot: [Math.PI / 2, 0.35, 0], minForm: 4, minLevel: 11, kind: 'anklePod' },
+	{ pos: [0.14, 0.14, 0.05], rot: [Math.PI / 2, -0.35, 0], minForm: 4, minLevel: 11, kind: 'anklePod' },
+	{ pos: [0, 2.12, -0.08], rot: [Math.PI / 2, 0, 0], minForm: 5, minLevel: 12, kind: 'crownSensor' },
+	{ pos: [0, 2.42, -0.04], rot: [Math.PI / 2, 0.2, 0], minForm: 5, minLevel: 14, kind: 'crownSensor' },
+	{ pos: [0, 2.72, 0], rot: [Math.PI / 2, 0, 0], minForm: 6, minLevel: 15, kind: 'crownSensor' },
+	{ pos: [0, 0.92, 0.22], rot: [0.85, 0, 0], minForm: 6, minLevel: 16, kind: 'thighPlate' },
+	{ pos: [-0.32, 1.55, 0.12], rot: [0.5, 0.4, 0.5], minForm: 7, minLevel: 17, kind: 'templeFin' },
+	{ pos: [0.32, 1.55, 0.12], rot: [0.5, -0.4, -0.5], minForm: 7, minLevel: 17, kind: 'templeFin' },
+	{ pos: [0, 1.22, 0.18], rot: [0.65, 0, 0], minForm: 8, minLevel: 19, kind: 'collarEmitter' }
 ];
 
-function activeRingSlotIndices(form: number, level: number): number[] {
+function activeLimbAttachSlotIndices(form: number, level: number): number[] {
 	const f = Math.min(Math.max(form, 0), 8);
 	const lv = Math.max(1, Math.floor(level));
 	const idx: number[] = [];
-	for (let i = 0; i < RING_SLOTS.length; i++) {
-		const s = RING_SLOTS[i];
+	for (let i = 0; i < LIMB_ATTACH_SLOTS.length; i++) {
+		const s = LIMB_ATTACH_SLOTS[i];
 		if (f >= s.minForm && lv >= s.minLevel) idx.push(i);
 	}
 	return idx;
@@ -181,7 +193,7 @@ export function applySkinnedEvolutionMaterials(
 	});
 }
 
-function makeRingMaterial(accent: number, opacity: number): THREE.MeshBasicMaterial {
+function makeGlowMat(accent: number, opacity: number): THREE.MeshBasicMaterial {
 	return new THREE.MeshBasicMaterial({
 		color: accent,
 		transparent: true,
@@ -192,27 +204,177 @@ function makeRingMaterial(accent: number, opacity: number): THREE.MeshBasicMater
 	});
 }
 
-function buildRingsSubgroup(
+/** 토러스 링 대신 — 어깨·팔·허벅지·발목·머리에 붙는 소형 기체 모듈 */
+function createLimbAttachmentModule(
+	kind: LimbAttachKind,
+	accent: number,
+	bodyTint: number,
+	t: number,
+	variant: number
+): THREE.Group {
+	const g = new THREE.Group();
+	const cAccent = new THREE.Color(accent);
+	const cBody = new THREE.Color(bodyTint);
+	const metal = new THREE.MeshStandardMaterial({
+		color: cBody.clone().lerp(cAccent, 0.28 + (variant % 4) * 0.04),
+		metalness: 0.88,
+		roughness: 0.2,
+		emissive: cAccent,
+		emissiveIntensity: 0.06 + t * 0.28
+	});
+	const dark = new THREE.MeshStandardMaterial({
+		color: cBody.clone().multiplyScalar(0.42),
+		metalness: 0.9,
+		roughness: 0.38
+	});
+	const glow = makeGlowMat(accent, 0.22 + t * 0.28);
+
+	const add = (mesh: THREE.Mesh): void => {
+		mesh.castShadow = true;
+		g.add(mesh);
+	};
+
+	switch (kind) {
+		case 'coreStrap': {
+			add(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.045, 0.12), metal));
+			for (const sx of [-0.16, 0.16] as const) {
+				const riv = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.04, 6), dark);
+				riv.rotation.z = Math.PI / 2;
+				riv.position.set(sx, 0, 0.05);
+				add(riv);
+			}
+			const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.055, 0), glow);
+			core.position.set(0, 0, 0.07);
+			add(core);
+			break;
+		}
+		case 'sternumPack': {
+			const housing = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.1), metal);
+			add(housing);
+			const vent = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.06), glow);
+			vent.position.set(0, 0, 0.07);
+			add(vent);
+			break;
+		}
+		case 'shoulderHousing': {
+			const shell = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.16), metal);
+			add(shell);
+			const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.1, 8), dark);
+			rod.rotation.x = Math.PI / 2;
+			rod.position.set(0, 0, 0.1);
+			add(rod);
+			const cap = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.08, 6), glow);
+			cap.rotation.x = -Math.PI / 2;
+			cap.position.set(0, 0, 0.16);
+			add(cap);
+			break;
+		}
+		case 'spineModule': {
+			const base = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.18), dark);
+			add(base);
+			const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.12, 8), metal);
+			stack.rotation.x = Math.PI / 2;
+			stack.position.set(0, 0.02, 0.08);
+			add(stack);
+			const lens = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), glow);
+			lens.position.set(0, 0, 0.14);
+			add(lens);
+			break;
+		}
+		case 'upperArmHarness': {
+			const band = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.12), metal);
+			add(band);
+			const rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.05), dark);
+			rail.position.set(0.05, -0.04, 0);
+			add(rail);
+			const pod = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.09), glow);
+			pod.position.set(-0.04, 0.05, 0.04);
+			add(pod);
+			break;
+		}
+		case 'thighPlate': {
+			const plate = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.1), metal);
+			add(plate);
+			const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.06), dark);
+			ridge.position.set(0, 0.06, 0.05);
+			add(ridge);
+			const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.08, 6), glow);
+			pin.rotation.x = Math.PI / 2;
+			pin.position.set(0, -0.05, 0.06);
+			add(pin);
+			break;
+		}
+		case 'anklePod': {
+			const wedge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.14), metal);
+			wedge.position.y = 0.02;
+			add(wedge);
+			const thr = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 6), glow);
+			thr.rotation.x = Math.PI / 2;
+			thr.position.set(0, -0.02, 0.08);
+			add(thr);
+			break;
+		}
+		case 'crownSensor': {
+			const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.18, 6), dark);
+			mast.position.y = 0.1;
+			add(mast);
+			const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.03, 8), metal);
+			dish.rotation.x = Math.PI / 2;
+			dish.position.set(0, 0.2, 0);
+			add(dish);
+			const eye = new THREE.Mesh(new THREE.OctahedronGeometry(0.05, 0), glow);
+			eye.position.set(0, 0.22, 0.04);
+			add(eye);
+			break;
+		}
+		case 'templeFin': {
+			const root = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.08), dark);
+			add(root);
+			const fin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.12), metal);
+			fin.position.set(0, 0.1, -0.02);
+			fin.rotation.z = 0.2;
+			add(fin);
+			const tip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.12, 4), glow);
+			tip.position.set(0, 0.2, -0.04);
+			tip.rotation.x = 0.35;
+			add(tip);
+			break;
+		}
+		case 'collarEmitter': {
+			const arc = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.14), metal);
+			add(arc);
+			for (let k = -1; k <= 1; k++) {
+				const cell = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.08), glow);
+				cell.position.set(k * 0.1, 0, 0.06);
+				add(cell);
+			}
+			break;
+		}
+		default:
+			break;
+	}
+
+	return g;
+}
+
+function buildLimbAttachSubgroup(
 	parent: THREE.Group,
 	form: number,
 	level: number,
 	accent: number,
+	bodyTint: number,
 	t: number
 ): void {
 	const g = new THREE.Group();
-	g.name = RINGS_SUBGROUP;
-	const indices = activeRingSlotIndices(form, level);
-	const op = 0.07 + t * 0.22;
+	g.name = LIMB_ATTACH_SUBGROUP;
+	const indices = activeLimbAttachSlotIndices(form, level);
 	for (let j = 0; j < indices.length; j++) {
 		const i = indices[j];
-		const s = RING_SLOTS[i];
-		const geo = new THREE.TorusGeometry(s.R, s.tube, 7, 40);
-		const mat = makeRingMaterial(accent, op + (j % 3) * 0.02);
-		const mesh = new THREE.Mesh(geo, mat);
-		mesh.position.set(s.pos[0], s.pos[1], s.pos[2]);
-		mesh.rotation.set(s.rot[0], s.rot[1], s.rot[2]);
-		mesh.renderOrder = 2;
-		g.add(mesh);
+		const s = LIMB_ATTACH_SLOTS[i];
+		const mod = createLimbAttachmentModule(s.kind, accent, bodyTint, t, j);
+		mod.position.set(s.pos[0], s.pos[1], s.pos[2]);
+		mod.rotation.set(s.rot[0], s.rot[1], s.rot[2]);
+		g.add(mod);
 	}
 	parent.add(g);
 }
@@ -263,10 +425,10 @@ function addVolumetricBooster(
 	nozzle.castShadow = true;
 	pod.add(nozzle);
 
-	const nozzleRing = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.012, 8, 16), bodyMat.clone());
-	nozzleRing.position.set(0, 0, 0.3);
-	nozzleRing.rotation.x = Math.PI / 2;
-	pod.add(nozzleRing);
+	const nozzleFlange = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.056, 0.022, 12), bodyMat.clone());
+	nozzleFlange.position.set(0, 0, 0.3);
+	nozzleFlange.rotation.x = Math.PI / 2;
+	pod.add(nozzleFlange);
 
 	const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.028, 0.06, 10), darkMat.clone());
 	bell.position.set(0, 0, 0.36);
@@ -508,7 +670,7 @@ function rebuildSkinnedDecoAttachments(root: THREE.Group, form: number, level: n
 		clearDecoChildren(deco);
 	}
 
-	buildRingsSubgroup(deco, f, lv, accent, t);
+	buildLimbAttachSubgroup(deco, f, lv, accent, body, t);
 	buildBoostersSubgroup(deco, f, lv, accent, body, t);
 	buildWingsSubgroup(deco, f, lv, accent, body, t);
 
@@ -523,7 +685,7 @@ export function removeSkinnedEvolutionDeco(root: THREE.Object3D): void {
 }
 
 /**
- * 스키닝 캐릭터: 재질 그레이딩 + 링(개수 증가) · 백 부스터 · 날개(단계).
+ * 스키닝 캐릭터: 재질 그레이딩 + 팔·다리·머리 부착 모듈 · 백 부스터 · 날개(단계).
  */
 export function updateSkinnedPlayerEvolution(
 	root: THREE.Group,

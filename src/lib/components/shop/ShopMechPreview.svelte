@@ -23,6 +23,20 @@
 	const PREVIEW_FORM = 4;
 	const MODEL_SCALE = 1.35;
 	const PREVIEW_LEVEL_FOR_FORM4 = 10;
+	/** 카메라(+Z) 반대를 기본 시선으로 (기존 0.35를 180° 뒤짐) */
+	const FACE_Y = Math.PI + 0.35;
+	/** `camera.lookAt`과 맞춰 바운딩 박스 중심을 화면 중앙에 둠 */
+	const FRAME_TARGET_Y = 1.15;
+
+	function centerModelAtLookAt(root: THREE.Object3D): void {
+		root.updateMatrixWorld(true);
+		const box = new THREE.Box3().setFromObject(root);
+		if (box.isEmpty()) return;
+		const c = new THREE.Vector3();
+		box.getCenter(c);
+		root.position.sub(c);
+		root.position.y += FRAME_TARGET_Y;
+	}
 
 	onMount(() => {
 		if (!host) return;
@@ -30,13 +44,13 @@
 		let alive = true;
 		const clock = new THREE.Clock();
 		const scene = new THREE.Scene();
-		scene.background = new THREE.Color(0xdce8f4);
+		scene.background = new THREE.Color(0xccccd0);
 
 		const w = host.clientWidth || 320;
 		const h = host.clientHeight || 280;
 		const camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 80);
-		camera.position.set(0, 2.1, 5.8);
-		camera.lookAt(0, 1.15, 0);
+		camera.position.set(0, FRAME_TARGET_Y + 0.95, 5.8);
+		camera.lookAt(0, FRAME_TARGET_Y, 0);
 
 		const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -107,8 +121,9 @@
 						mechBase,
 						PREVIEW_LEVEL_FOR_FORM4
 					);
-					payload.root.rotation.y = 0.35;
+					payload.root.rotation.y = FACE_Y;
 					scene.add(payload.root);
+					centerModelAtLookAt(payload.root);
 					const idle = pickSkinnedClip(payload.actions, ['Idle', 'Standing', 'idle'], [
 						'idle',
 						'stand',
@@ -121,17 +136,19 @@
 					if (!alive || !host) return;
 					const { group } = createEvolvedModel(PREVIEW_FORM, MODEL_SCALE, mechBase);
 					applyMechBaseTint(group, mechBase);
-					group.rotation.y = 0.35;
+					group.rotation.y = FACE_Y;
 					rootGroup = group;
 					scene.add(group);
+					centerModelAtLookAt(group);
 					tick();
 				});
 		} else {
 			const { group } = createEvolvedModel(PREVIEW_FORM, MODEL_SCALE, mechBase);
 			applyMechBaseTint(group, mechBase);
-			group.rotation.y = 0.35;
+			group.rotation.y = FACE_Y;
 			rootGroup = group;
 			scene.add(group);
+			centerModelAtLookAt(group);
 			tick();
 		}
 
@@ -152,7 +169,7 @@
 <div class="preview-host" bind:this={host}></div>
 <p class="preview-caption">
 	{#if mechBase === 'expressive' || mechBase === 'soldier'}
-		Form {PREVIEW_FORM} · GLTF + 링·부스터·날개 · 애니메이션 미리보기
+		Form {PREVIEW_FORM} · GLTF + 부착 모듈·부스터·날개 · 애니메이션 미리보기
 	{:else}
 		Form {PREVIEW_FORM} · 기체별 전용 메쉬(네모·세모·원) · 레벨에 따라 0~8 진화
 	{/if}
@@ -165,11 +182,11 @@
 		aspect-ratio: 4 / 3;
 		border-radius: 10px;
 		overflow: hidden;
-		border: 1px solid rgba(0, 140, 200, 0.25);
+		border: 1px solid rgba(0, 0, 0, 0.1);
 		box-shadow:
-			inset 0 0 24px rgba(255, 255, 255, 0.5),
-			0 2px 12px rgba(20, 60, 100, 0.1);
-		background: linear-gradient(180deg, #e8f0f8 0%, #dce8f4 100%);
+			inset 0 0 20px rgba(255, 255, 255, 0.65),
+			0 2px 10px rgba(0, 0, 0, 0.06);
+		background: linear-gradient(180deg, #d8d8dc 0%, #c4c4ca 100%);
 	}
 	.preview-host :global(canvas) {
 		display: block;

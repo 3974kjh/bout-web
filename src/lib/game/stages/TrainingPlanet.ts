@@ -57,14 +57,42 @@ export class TrainingPlanet implements StageQuery {
 		this.createAmbientProps(scene);
 	}
 
-	getGroundHeight(x: number, z: number, currentY: number): number {
+	getGroundHeight(x: number, z: number, currentY: number, xzMargin = 0): number {
+		let best = 0;
+		const m = xzMargin;
+		for (const p of this.platforms) {
+			if (
+				x >= p.box.min.x - m &&
+				x <= p.box.max.x + m &&
+				z >= p.box.min.z - m &&
+				z <= p.box.max.z + m &&
+				p.topY <= currentY + STEP_UP
+			) {
+				best = Math.max(best, p.topY);
+			}
+		}
+		return best;
+	}
+
+	getGroundHeightForRing(x: number, z: number, footY: number): number {
+		const footTol = 0.42;
+		const edge = 0.12;
+		/** 발이 상면 위로 충분히 떠 있을 때만 "위를 지나감"으로 링 투영 (다리 밑 통과 시 제외) */
+		const overTol = 0.14;
 		let best = 0;
 		for (const p of this.platforms) {
 			if (
-				x >= p.box.min.x && x <= p.box.max.x &&
-				z >= p.box.min.z && z <= p.box.max.z &&
-				p.topY <= currentY + STEP_UP
+				x < p.box.min.x - edge ||
+				x > p.box.max.x + edge ||
+				z < p.box.min.z - edge ||
+				z > p.box.max.z + edge
 			) {
+				continue;
+			}
+			const onFeet =
+				p.topY <= footY + footTol && p.topY >= footY - 0.38;
+			const passingOver = footY > p.topY + overTol;
+			if (onFeet || passingOver) {
 				best = Math.max(best, p.topY);
 			}
 		}
@@ -191,7 +219,10 @@ export class TrainingPlanet implements StageQuery {
 			scene.add(mesh);
 
 			const edgeMesh = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.05, 0.05, pd + 0.05), edgeMat.clone());
-			edgeMesh.position.set(px, topY + 0.01, pz);
+			// 본체 상면(y=topY)과 겹치면 그림자 z-fighting — 테두리만 살짝 위로
+			edgeMesh.position.set(px, topY + 0.028, pz);
+			edgeMesh.castShadow = true;
+			edgeMesh.receiveShadow = true;
 			scene.add(edgeMesh);
 			this.obstacleEdgeMats.push(edgeMesh.material as THREE.MeshStandardMaterial);
 
@@ -233,6 +264,8 @@ export class TrainingPlanet implements StageQuery {
 			if (wh >= 8) {
 				const cap = new THREE.Mesh(new THREE.BoxGeometry(ww + 0.2, 0.3, wd + 0.2), wallGlowMat.clone());
 				cap.position.set(wx, wh + 0.15, wz);
+				cap.castShadow = true;
+				cap.receiveShadow = true;
 				scene.add(cap);
 				this.glowMeshes.push(cap);
 			}
@@ -259,9 +292,15 @@ export class TrainingPlanet implements StageQuery {
 		];
 		for (const [dx, dz] of drumPos) {
 			const d = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.32, 0.9, 8), drumMat.clone());
-			d.position.set(dx, 0.45, dz); scene.add(d);
+			d.position.set(dx, 0.45, dz);
+			d.castShadow = true;
+			d.receiveShadow = true;
+			scene.add(d);
 			const b = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.1, 8), drumBandMat.clone());
-			b.position.set(dx, 0.55, dz); scene.add(b);
+			b.position.set(dx, 0.55, dz);
+			b.castShadow = true;
+			b.receiveShadow = true;
+			scene.add(b);
 		}
 
 		// 수직 파이프 (시각적 배경)
@@ -273,12 +312,18 @@ export class TrainingPlanet implements StageQuery {
 		];
 		for (const [px, ph, pz] of pipePos) {
 			const p = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, ph, 8), pipeMat.clone());
-			p.position.set(px, ph / 2, pz); scene.add(p);
+			p.position.set(px, ph / 2, pz);
+			p.castShadow = true;
+			p.receiveShadow = true;
+			scene.add(p);
 			// 파이프 상단 발광 링
 			const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 12),
 				new THREE.MeshStandardMaterial({ color: 0x00ccff, emissive: new THREE.Color(0x0066aa), emissiveIntensity: 1.2 }));
 			ring.rotation.x = Math.PI / 2;
-			ring.position.set(px, ph + 0.05, pz); scene.add(ring);
+			ring.position.set(px, ph + 0.05, pz);
+			ring.castShadow = true;
+			ring.receiveShadow = true;
+			scene.add(ring);
 			this.glowMeshes.push(ring as unknown as THREE.Mesh);
 		}
 
@@ -292,7 +337,10 @@ export class TrainingPlanet implements StageQuery {
 			const w = bw > 0 ? bw : 1.2;
 			const d = bd > 0 ? bd : 1.2;
 			const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.25, d), beamMat.clone());
-			b.position.set(bx, by, bz); scene.add(b);
+			b.position.set(bx, by, bz);
+			b.castShadow = true;
+			b.receiveShadow = true;
+			scene.add(b);
 		}
 	}
 

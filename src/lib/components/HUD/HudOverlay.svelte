@@ -7,8 +7,10 @@
 		rarityGradePoints,
 		type UpgradeCardInfo
 	} from '$lib/game/systems/UpgradeSystem';
-	import { computeRunScore } from '$lib/game/constants/GameConfig';
+	import { computeRunScore, VICTORY_SURVIVAL_SECONDS } from '$lib/game/constants/GameConfig';
+	import { getShopSettingsForGame, refreshShopSettingsForGame } from '$lib/game/shopGameCache';
 	import { appendRankRunRecord } from '$lib/storage/rankIndexedDb';
+	import HudEvoMiniPreview from '$lib/components/HUD/HudEvoMiniPreview.svelte';
 	import type { MechBase } from '$lib/domain/types';
 
 	const MECH_BASES: MechBase[] = [
@@ -28,195 +30,8 @@
 	let minimapCanvas: HTMLCanvasElement | undefined = $state(undefined);
 	const MMAP_SIZE = 160;
 
-	// ── 캐릭터 진화 프리뷰 ──────────────────────────────────────────────────────
-	let evoCanvas: HTMLCanvasElement | undefined = $state(undefined);
-
-	/** form(0~8)에 따른 2D 실루엣을 캔버스에 그림 */
-	function drawEvoPreview(form: number): void {
-		if (!evoCanvas) return;
-		const ctx = evoCanvas.getContext('2d');
-		if (!ctx) return;
-		const W = 80, H = 110;
-		ctx.clearRect(0, 0, W, H);
-
-		// 배경 (테두리는 .evo-wrap CSS만 사용 — 캔버스 이중 테두리 제거)
-		ctx.fillStyle = 'rgba(0,10,25,0.88)';
-		ctx.fillRect(0, 0, W, H);
-
-		// form별 색상 (진화할수록 더 화려)
-		const bodyColors   = ['#666','#5577aa','#1155cc','#0044dd','#0033cc','#001aaa','#bb5500','#cc2200','#991100'];
-		const accentColors = ['#999','#88aacc','#22aaff','#2299ff','#00bbff','#00ccff','#ffbb00','#ff7700','#ff2200'];
-		const eyeColors    = ['#ff4444','#ff6644','#33aaff','#3399ff','#00ccff','#00eeff','#ffee00','#ff8800','#ff2200'];
-		const glowColors   = ['none','none','#1155cc','#0044dd','#0033cc','#001aaa','#bb5500','#cc2200','#991100'];
-		const bc = bodyColors[Math.min(form, 8)];
-		const ac = accentColors[Math.min(form, 8)];
-		const ec = eyeColors[Math.min(form, 8)];
-
-		const cx = W / 2;
-		const groundY = H - 6;
-
-		// ── 앞모습 (front-facing) 캐릭터 ────────────────────────────────────────
-		// form 0: 단순 직육면체만
-		// form 1: + 머리(구형 헬멧)
-		// form 2: + 팔
-		// form 3: + 다리
-		// form 4: + 어깨 패드
-		// form 5: + 흉갑 + 바이저 글로우
-		// form 6: + V핀 + 디테일
-		// form 7: + 날개
-		// form 8: + 숄더 캐논 + 풀 장갑
-
-		// 기본 크기 (form에 따라 점점 비례 증가)
-		const scale = 0.55 + form * 0.055;
-		const bw = Math.round(20 * scale); // 몸통 너비 절반
-		const bh = Math.round(26 * scale); // 몸통 높이
-		const hw = Math.round(12 * scale); // 머리 너비 절반
-		const hh = Math.round(12 * scale); // 머리 높이
-		const lw = Math.round(7  * scale); // 다리 너비
-		const lh = Math.round(20 * scale); // 다리 높이
-		const aw = Math.round(9  * scale); // 팔 너비
-		const ah = Math.round(18 * scale); // 팔 높이
-
-		const bodyTop = groundY - lh - bh;
-		const headTop = bodyTop - hh - 2;
-
-		// 글로우 효과 (form 5+)
-		if (form >= 5 && glowColors[form] !== 'none') {
-			ctx.shadowColor = ac;
-			ctx.shadowBlur  = 8 + form * 1.5;
-		}
-
-		// 다리 (form 3+)
-		if (form >= 3) {
-			ctx.fillStyle = bc;
-			ctx.fillRect(cx - bw * 0.5 - 1, groundY - lh, lw, lh);
-			ctx.fillRect(cx + bw * 0.5 + 1 - lw, groundY - lh, lw, lh);
-			// 발 (form 5+)
-			if (form >= 5) {
-				ctx.fillStyle = ac;
-				ctx.fillRect(cx - bw * 0.5 - 2, groundY - 5, lw + 3, 5);
-				ctx.fillRect(cx + bw * 0.5 - lw - 1, groundY - 5, lw + 3, 5);
-			}
-		} else {
-			// form 0~2: 바닥 받침
-			ctx.fillStyle = bc;
-			ctx.fillRect(cx - 10, groundY - 8, 20, 8);
-		}
-
-		// 팔 (form 2+)
-		if (form >= 2) {
-			ctx.fillStyle = bc;
-			const armTop = bodyTop + Math.round(4 * scale);
-			ctx.fillRect(cx - bw - aw - 2, armTop, aw, ah);
-			ctx.fillRect(cx + bw + 2,      armTop, aw, ah);
-			// 손 (form 4+)
-			if (form >= 4) {
-				ctx.fillStyle = ac;
-				ctx.fillRect(cx - bw - aw - 2, armTop + ah, aw, Math.round(5 * scale));
-				ctx.fillRect(cx + bw + 2,      armTop + ah, aw, Math.round(5 * scale));
-			}
-		}
-
-		// 어깨 패드 (form 4+)
-		if (form >= 4) {
-			ctx.fillStyle = ac;
-			const spw = Math.round(14 * scale);
-			const sph = Math.round(8  * scale);
-			ctx.fillRect(cx - bw - aw - 2,      bodyTop, spw, sph);
-			ctx.fillRect(cx + bw - spw + aw + 2, bodyTop, spw, sph);
-		}
-
-		// 몸통
-		ctx.fillStyle = bc;
-		ctx.fillRect(cx - bw, bodyTop, bw * 2, bh);
-		// 흉갑 (form 5+)
-		if (form >= 5) {
-			ctx.fillStyle = ac;
-			const cpw = Math.round(bw * 1.0);
-			const cph = Math.round(bh * 0.55);
-			ctx.fillRect(cx - cpw / 2, bodyTop + 2, cpw, cph);
-			// 코어 발광
-			ctx.fillStyle = ec;
-			ctx.shadowColor = ec;
-			ctx.shadowBlur = 6;
-			ctx.fillRect(cx - 4, bodyTop + Math.round(cph * 0.4), 8, 7);
-			ctx.shadowBlur = form >= 5 ? 8 + form * 1.5 : 0;
-			ctx.shadowColor = ac;
-		}
-
-		// 머리 (form 1+)
-		if (form >= 1) {
-			ctx.fillStyle = bc;
-			ctx.fillRect(cx - hw, headTop, hw * 2, hh);
-			// 바이저 (form 3+)
-			if (form >= 3) {
-				ctx.fillStyle = ec;
-				ctx.shadowColor = ec;
-				ctx.shadowBlur = 5;
-				ctx.fillRect(cx - Math.round(hw * 0.7), headTop + Math.round(hh * 0.3), Math.round(hw * 1.4), Math.round(hh * 0.35));
-				ctx.shadowBlur = form >= 5 ? 8 + form * 1.5 : 0;
-				ctx.shadowColor = ac;
-			}
-			// V핀 (form 6+)
-			if (form >= 6) {
-				ctx.fillStyle = '#ffdd00';
-				ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 6;
-				ctx.beginPath();
-				ctx.moveTo(cx,      headTop - Math.round(12 * scale));
-				ctx.lineTo(cx - 5, headTop);
-				ctx.lineTo(cx + 5, headTop);
-				ctx.closePath(); ctx.fill();
-				ctx.shadowColor = ac; ctx.shadowBlur = form >= 5 ? 8 + form * 1.5 : 0;
-			}
-			// 안테나 (form 2~5)
-			if (form >= 2 && form < 6) {
-				ctx.fillStyle = ac;
-				ctx.fillRect(cx - 1, headTop - Math.round(8 * scale), 2, Math.round(8 * scale));
-			}
-		} else {
-			// form 0: 눈만 표시
-			ctx.fillStyle = '#ff4444';
-			ctx.shadowColor = '#ff4444'; ctx.shadowBlur = 4;
-			ctx.fillRect(cx - 6, bodyTop + 4, 5, 4);
-			ctx.fillRect(cx + 1, bodyTop + 4, 5, 4);
-			ctx.shadowBlur = 0;
-		}
-
-		// 날개 (form 7+)
-		if (form >= 7) {
-			ctx.fillStyle = ac;
-			ctx.globalAlpha = 0.85;
-			ctx.shadowColor = ac; ctx.shadowBlur = 10;
-			// 왼쪽 날개
-			ctx.beginPath();
-			ctx.moveTo(cx - bw,        bodyTop + 4);
-			ctx.lineTo(cx - bw - aw * 3, bodyTop + Math.round(bh * 0.3));
-			ctx.lineTo(cx - bw,        bodyTop + Math.round(bh * 0.6));
-			ctx.closePath(); ctx.fill();
-			// 오른쪽 날개
-			ctx.beginPath();
-			ctx.moveTo(cx + bw,        bodyTop + 4);
-			ctx.lineTo(cx + bw + aw * 3, bodyTop + Math.round(bh * 0.3));
-			ctx.lineTo(cx + bw,        bodyTop + Math.round(bh * 0.6));
-			ctx.closePath(); ctx.fill();
-			ctx.globalAlpha = 1.0;
-			ctx.shadowBlur = 8 + form * 1.5;
-			ctx.shadowColor = ac;
-		}
-
-		// 숄더 캐논 (form 8)
-		if (form >= 8) {
-			ctx.fillStyle = '#222';
-			ctx.fillRect(cx - bw - aw - 14, bodyTop - 4, 14, 7);
-			ctx.fillRect(cx + bw + aw,      bodyTop - 4, 14, 7);
-			ctx.fillStyle = ec;
-			ctx.shadowColor = ec; ctx.shadowBlur = 8;
-			ctx.fillRect(cx - bw - aw - 22, bodyTop - 2, 10, 4);
-			ctx.fillRect(cx + bw + aw + 12, bodyTop - 2, 10, 4);
-		}
-
-		ctx.shadowBlur = 0;
-	}
+	// ── 캐릭터 진화 프리뷰 (정비소 기체 · Three.js) ────────────────────────────
+	let mechBase = $state<MechBase>(getShopSettingsForGame().mechBase);
 
 	interface MinimapData {
 		player: { x: number; z: number; fx: number; fz: number };
@@ -317,14 +132,27 @@
 			.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
 	);
 
-	// ── 생존 시간 ────────────────────────────────────────────────────────────────
+	// ── 생존 시간 / 20분 카운트다운 ─────────────────────────────────────────────
 	let survivalSeconds = $state(0);
-	const timeDisplay = $derived(
-		`${String(Math.floor(survivalSeconds / 60)).padStart(2, '0')}:${String(Math.floor(survivalSeconds % 60)).padStart(2, '0')}`
+	function fmtMMSS(totalSec: number): string {
+		const s = Math.max(0, Math.floor(totalSec));
+		const m = Math.floor(s / 60);
+		const r = s % 60;
+		return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+	}
+	/** 경과는 floor(초), 남은 시간은 ceil(목표−경과)초 — 둘의 합이 항상 목표 분(1200초)과 맞음 */
+	const elapsedWholeSec = $derived(Math.floor(Math.max(0, survivalSeconds)));
+	const remainingWholeSec = $derived(
+		Math.max(0, Math.ceil(VICTORY_SURVIVAL_SECONDS - survivalSeconds - Number.EPSILON))
 	);
+	/** 상단 중앙: 목표까지 남은 시간 (20:00 → 00:00) */
+	const countdownDisplay = $derived(fmtMMSS(remainingWholeSec));
+	/** 경과 생존 시간 */
+	const elapsedDisplay = $derived(fmtMMSS(elapsedWholeSec));
 
 	type BossKillKey = 'bear' | 'wolf' | 'dragon' | 'tiger' | 'ironlord';
 	type GameOverDetail = {
+		victory: boolean;
 		survivalTime: number;
 		level: number;
 		normalKills: number;
@@ -443,23 +271,10 @@
 		killNormal = d.normal;
 		killBosses = { ...d.bosses };
 	}
-	function formForLevel(lv: number): number {
-		if (lv >= 20) return 8;
-		if (lv >= 17) return 7;
-		if (lv >= 14) return 6;
-		if (lv >= 11) return 5;
-		if (lv >= 9)  return 4;
-		if (lv >= 7)  return 3;
-		if (lv >= 5)  return 2;
-		if (lv >= 3)  return 1;
-		return 0;
-	}
-
 	function onExpUpdate(...args: unknown[]): void {
 		const d = args[0] as { level: number; progress: number };
 		level = d.level;
 		expProg = d.progress;
-		drawEvoPreview(formForLevel(level));
 	}
 	function onLevelUp(...args: unknown[]): void {
 		const d = args[0] as { level: number; cards: UpgradeCardInfo[] };
@@ -489,6 +304,7 @@
 	function onGameOver(...args: unknown[]): void {
 		const d = args[0] as
 			| {
+					victory?: boolean;
 					survivalTime?: number;
 					bossCount?: number;
 					level?: number;
@@ -517,6 +333,7 @@
 					}
 				: computeRunScore({ level: lv, survivalSeconds: surv, bossKills: bosses });
 		goDetail = {
+			victory: d?.victory === true,
 			survivalTime: surv,
 			level: lv,
 			normalKills: norm,
@@ -575,9 +392,24 @@
 		EventBus.emit('restart-game');
 	}
 
+	function goShop(): void {
+		void goto('/shop');
+	}
+
+	/** IDB 정비소 설정과 HUD 프리뷰 동기화 (첫 진입·재시작 공통) */
+	function syncMechBaseFromShop(): void {
+		void refreshShopSettingsForGame().then(() => {
+			mechBase = coerceMechBase(getShopSettingsForGame().mechBase);
+		});
+	}
+
+	function onRestartShopSync(): void {
+		syncMechBaseFromShop();
+	}
+
 	onMount(() => {
-		// 초기 진화 프리뷰 렌더 (마운트 다음 틱에서 canvas가 준비됨)
-		setTimeout(() => drawEvoPreview(0), 50);
+		syncMechBaseFromShop();
+		EventBus.on('restart-game', onRestartShopSync);
 		EventBus.on('hp-update',              onHpUpdate);
 		EventBus.on('monster-count-update',   onMonsterCount);
 		EventBus.on('survival-time-update',   onSurvivalTimeUpdate);
@@ -597,6 +429,7 @@
 		window.addEventListener('keydown', onKeydown);
 	});
 	onDestroy(() => {
+		EventBus.off('restart-game', onRestartShopSync);
 		EventBus.off('hp-update',            onHpUpdate);
 		EventBus.off('monster-count-update', onMonsterCount);
 		EventBus.off('survival-time-update',  onSurvivalTimeUpdate);
@@ -654,7 +487,9 @@
 						</div>
 					</div>
 					<div class="evo-wrap">
-						<canvas bind:this={evoCanvas} width={80} height={110} class="evo-canvas"></canvas>
+						{#key mechBase}
+							<HudEvoMiniPreview mechBase={mechBase} level={level} />
+						{/key}
 						<div class="evo-label">Lv.{level}</div>
 					</div>
 				</div>
@@ -671,10 +506,14 @@
 			</div>
 		</div>
 
-		<!-- 가운데: 생존 시간 -->
+		<!-- 가운데: 남은 목표 시간 + 경과 생존 -->
 		<div class="center-panel">
-			<div class="time-display">{timeDisplay}</div>
-			<div class="time-label">SURVIVAL</div>
+			<div class="time-display">{countdownDisplay}</div>
+			<div class="time-label">남은 시간</div>
+			<div class="time-elapsed-row" aria-label="경과 생존 시간">
+				<span class="time-elapsed-label">경과</span>
+				<span class="time-elapsed-value">{elapsedDisplay}</span>
+			</div>
 			<div class="kill-stats" aria-label="처치 통계">
 				<div class="kill-stats-boss">
 					<span class="ks-head">보스</span>
@@ -763,8 +602,8 @@
 	<!-- ── 게임 오버 ──────────────────────────────────────────────────────────── -->
 	{#if gameOver && goDetail}
 		<div class="overlay">
-			<div class="box over go-box">
-				<h2>GAME OVER</h2>
+			<div class="box over go-box" class:go-victory={goDetail.victory}>
+				<h2>{goDetail.victory ? '미션 클리어' : 'GAME OVER'}</h2>
 				<p class="go-score-line">
 					총 점수 <strong class="go-score-total">{goDetail.scoreTotal.toLocaleString('ko-KR')}</strong>
 				</p>
@@ -800,7 +639,10 @@
 						<p class="go-wave-hint">(웨이브 난이도 기준 보스 격파 {goDetail.waveBossCount}회)</p>
 					{/if}
 				</div>
-				<button type="button" onclick={restart}>재시작</button>
+				<div class="go-actions">
+					<button type="button" class="go-btn" onclick={restart}>재시작</button>
+					<button type="button" class="go-btn go-btn-shop" onclick={goShop}>정비소</button>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -974,6 +816,28 @@
 		font-size: 0.60rem; font-weight: 700; letter-spacing: 0.22em;
 		color: rgba(0,200,255,0.75); text-transform: uppercase;
 	}
+	.time-elapsed-row {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		margin-top: 1px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: rgba(170, 205, 230, 0.82);
+	}
+	.time-elapsed-label {
+		opacity: 0.88;
+		text-transform: uppercase;
+		font-size: 0.58rem;
+		letter-spacing: 0.14em;
+	}
+	.time-elapsed-value {
+		font-variant-numeric: tabular-nums;
+		color: rgba(230, 248, 255, 0.95);
+		font-weight: 800;
+	}
 	.right-panel { min-width: 180px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 
 	/* ── 진화 프리뷰 (너비 = 위 HP 블록과 동일) ── */
@@ -987,12 +851,6 @@
 		border: 1px solid rgba(0,200,255,0.3);
 		box-shadow: 0 0 10px rgba(0,150,255,0.2);
 		overflow: hidden;
-	}
-	.evo-canvas {
-		display: block;
-		width: 80px;
-		height: 110px;
-		margin: 0 auto;
 	}
 	.evo-label {
 		position: absolute; top: 4px; left: 0; right: 0; bottom: auto;
@@ -1233,6 +1091,14 @@
 		border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
 	}
 	.box.over { background: rgba(60,20,20,0.92); }
+	.box.go-box.go-victory {
+		background: rgba(16, 52, 40, 0.94);
+		border-color: rgba(0, 220, 150, 0.28);
+	}
+	.box.go-box.go-victory h2 {
+		color: #66ffaa !important;
+		text-shadow: 0 0 18px rgba(0, 220, 140, 0.35);
+	}
 	.box.go-box {
 		max-width: min(420px, 94vw);
 		max-height: min(88vh, 640px);
@@ -1321,9 +1187,37 @@
 		font-size: 0.65rem;
 		color: #777;
 	}
-	.box.go-box > button {
-		display: block;
-		margin: 0 auto;
+	.go-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: center;
+		gap: 0.65rem;
+		margin-top: 0.5rem;
+	}
+	.go-btn {
+		padding: 0.6rem 1.35rem;
+		font-size: 0.95rem;
+		font-weight: 600;
+		border: 2px solid #6af;
+		background: transparent;
+		color: #6af;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background 0.2s, color 0.2s, border-color 0.2s;
+	}
+	.go-btn:hover {
+		background: #6af;
+		color: #111;
+	}
+	.go-btn-shop {
+		border-color: rgba(255, 200, 120, 0.75);
+		color: #ffd8a0;
+	}
+	.go-btn-shop:hover {
+		background: rgba(255, 200, 120, 0.2);
+		color: #fff8e8;
+		border-color: rgba(255, 220, 160, 0.95);
 	}
 	.box button {
 		padding: 0.6rem 2rem; font-size: 1rem; font-weight: 600;

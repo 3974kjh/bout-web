@@ -15,10 +15,16 @@
 	type Props = { mechBase: MechBase };
 	let { mechBase }: Props = $props();
 
-	/** 절차 메쉬 — ortho 스트립에서 GLTF(익스프레시브) 실루엣과 비슷한 크기로 맞춤 */
-	const MINI_SCALE = 0.72;
+	/** 절차 메쉬(하이퍼슈트·아조나스·게렌) — 시뮬레이션에서 한 단계 더 크게 표시 */
+	const MINI_SCALE = 0.92;
+	/** 카메라(+Z) 반대를 기준 시선으로, Form별 미세 각도는 그대로 유지 */
+	const FACE_Y_BASE = Math.PI;
 	const WORLD_SPAN_X = 32;
-	const SPACING = 3.45;
+	/** 아래 `evo-form-labels` 9열 그리드와 동일 — 각 열 가로 중앙의 월드 X */
+	const FORM_STRIP_COLS = 9;
+	function formStripCenterX(form: number): number {
+		return WORLD_SPAN_X * ((form + 0.5) / FORM_STRIP_COLS - 0.5);
+	}
 	const LEVEL_MAX = 20;
 	/** 각 Form 구간 대표 레벨(외장 스케일·게임 대응) */
 	const FORM_MID_LEVEL = [1, 3, 5, 7, 9, 12, 15, 18, 20];
@@ -35,7 +41,7 @@
 
 		let alive = true;
 		const scene = new THREE.Scene();
-		scene.background = new THREE.Color(0xdce8f4);
+		scene.background = new THREE.Color(0xccccd0);
 
 		const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 220);
 		camera.position.set(0, 1.22, 22);
@@ -125,8 +131,8 @@
 					for (let form = 0; form <= 8; form++) {
 						const p = payloads[form];
 						const g = p.root;
-						g.position.x = (form - 4) * SPACING;
-						g.rotation.y = form * 0.06;
+						g.position.x = formStripCenterX(form);
+						g.rotation.y = FACE_Y_BASE + form * 0.06;
 						updateSkinnedPlayerEvolution(g, form, mechBase, FORM_MID_LEVEL[form]);
 						scene.add(g);
 						groups.push(g);
@@ -138,8 +144,8 @@
 					for (let form = 0; form <= 8; form++) {
 						const { group } = createEvolvedModel(form, MINI_SCALE, 'geren');
 						applyMechBaseTint(group, mechBase);
-						group.position.x = (form - 4) * SPACING;
-						group.rotation.y = form * 0.06;
+						group.position.x = formStripCenterX(form);
+						group.rotation.y = FACE_Y_BASE + form * 0.06;
 						scene.add(group);
 						groups.push(group);
 					}
@@ -150,8 +156,8 @@
 			for (let form = 0; form <= 8; form++) {
 				const { group } = createEvolvedModel(form, MINI_SCALE, mechBase);
 				applyMechBaseTint(group, mechBase);
-				group.position.x = (form - 4) * SPACING;
-				group.rotation.y = form * 0.06;
+				group.position.x = formStripCenterX(form);
+				group.rotation.y = FACE_Y_BASE + form * 0.06;
 				scene.add(group);
 				groups.push(group);
 			}
@@ -176,7 +182,7 @@
 	<p class="evo-lead">
 		{#if mechBase === 'expressive' || mechBase === 'soldier'}
 			<strong>{mechBase === 'soldier' ? '솔저' : '익스프레시브'}</strong>는 GLTF 본체에 <strong>재질 그레이딩</strong>과 함께,
-			레벨·Form에 따라 <strong>링</strong>·<strong>백 부스터</strong>·<strong>날개</strong>가 늘어납니다. 솔저는 three.js
+			레벨·Form에 따라 <strong>팔·다리·머리 부착 모듈</strong>·<strong>백 부스터</strong>·<strong>날개</strong>가 늘어납니다. 솔저는 three.js
 			<strong>Idle / Walk / Run</strong> 클립을 사용합니다. 다른 기체는 절차 메쉬 파이프라인이 서로 다릅니다.
 		{:else}
 			기체마다 <strong>완전히 다른 3D 파이프라인</strong>(네모 / 세모 / 원형)으로 Form이 쌓입니다. 아래
@@ -237,17 +243,17 @@
 	.evo-strip-wrap {
 		border-radius: 12px;
 		overflow: hidden;
-		border: 1px solid rgba(0, 140, 200, 0.22);
-		background: linear-gradient(180deg, #eef5fb 0%, #e2ebf5 55%, #d8e4f0 100%);
+		border: 1px solid rgba(0, 0, 0, 0.1);
+		background: linear-gradient(180deg, #dcdce0 0%, #ceced4 55%, #c2c2c8 100%);
 		margin-bottom: 0.65rem;
-		box-shadow: 0 2px 12px rgba(20, 60, 100, 0.08);
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 	}
 
 	.evo-canvas-host {
 		width: 100%;
-		min-height: 200px;
-		aspect-ratio: 21 / 7;
-		background: linear-gradient(180deg, #e8f0f8 0%, #dce8f4 100%);
+		min-height: 148px;
+		aspect-ratio: 21 / 4;
+		background: linear-gradient(180deg, #d8d8dc 0%, #c4c4ca 100%);
 	}
 
 	.evo-canvas-host :global(canvas) {
@@ -260,9 +266,9 @@
 		display: grid;
 		grid-template-columns: repeat(9, minmax(0, 1fr));
 		gap: 0;
-		padding: 0.4rem 0.15rem 0.55rem;
-		background: rgba(255, 255, 255, 0.72);
-		border-top: 1px solid rgba(0, 100, 160, 0.12);
+		padding: 0.28rem 0.15rem 0.38rem;
+		background: rgba(228, 228, 230, 0.96);
+		border-top: 1px solid rgba(0, 0, 0, 0.08);
 		font-size: 0.52rem;
 		line-height: 1.3;
 		align-items: start;

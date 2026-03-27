@@ -68,7 +68,7 @@
 	);
 </script>
 
-<main class="rank-page">
+<main class="rank-page bout-scrollbar">
 	<BackToHomeButton />
 	<header class="rank-head">
 		<h1>기록 랭킹</h1>
@@ -85,11 +85,6 @@
 				{#key podiumKey}
 					<RankPodium podiumRecords={podiumSlots} />
 				{/key}
-				<div class="podium-labels" aria-hidden="true">
-					<span class="pl pl-s">2위</span>
-					<span class="pl pl-g">1위</span>
-					<span class="pl pl-b">3위</span>
-				</div>
 			{/if}
 		</section>
 
@@ -98,7 +93,7 @@
 			{#if sorted.length === 0}
 				<p class="empty-list">목록이 비어 있습니다.</p>
 			{:else}
-				<div class="table-wrap">
+				<div class="table-wrap bout-scrollbar">
 					<table class="rank-table">
 						<thead>
 							<tr>
@@ -115,7 +110,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each pageSlice as row, i}
+							{#each pageSlice as row, i (row.id)}
 								{@const rank = (page - 1) * PAGE_SIZE + i + 1}
 								<tr>
 									<td class="col-rank"><strong>{rank}</strong></td>
@@ -161,7 +156,9 @@
 <style>
 	.rank-page {
 		min-height: 100vh;
+		height: 100vh;
 		overflow-x: hidden;
+		overflow-y: auto;
 		padding: clamp(1rem, 3vw, 2rem);
 		font-family: 'Segoe UI', system-ui, sans-serif;
 		color: #e8f4ff;
@@ -197,7 +194,7 @@
 
 	.podium-section {
 		max-width: 56rem;
-		margin: 0 auto 2rem;
+		margin: 0 auto 1.35rem;
 	}
 
 	.empty-podium {
@@ -209,29 +206,6 @@
 		border: 1px dashed rgba(0, 160, 220, 0.25);
 		border-radius: 12px;
 		background: rgba(0, 20, 40, 0.35);
-	}
-
-	.podium-labels {
-		display: grid;
-		grid-template-columns: 1fr 1fr 1fr;
-		gap: 0.5rem;
-		margin-top: 0.5rem;
-		text-align: center;
-		font-size: 0.68rem;
-		font-weight: 800;
-		letter-spacing: 0.2em;
-		color: rgba(160, 210, 255, 0.75);
-	}
-
-	.pl-g {
-		color: #ffd54a;
-		font-size: 0.78rem;
-	}
-	.pl-s {
-		color: #c0d0e8;
-	}
-	.pl-b {
-		color: #d4a574;
 	}
 
 	.list-section {

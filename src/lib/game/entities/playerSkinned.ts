@@ -252,6 +252,12 @@ export function loadSkinnedPlayerGltf(
 
 				const root = new THREE.Group();
 				root.add(model);
+				model.traverse((o) => {
+					if (o instanceof THREE.Mesh || o instanceof THREE.SkinnedMesh) {
+						o.castShadow = true;
+						o.frustumCulled = false;
+					}
+				});
 				root.updateMatrixWorld(true);
 				const box3 = new THREE.Box3().setFromObject(root);
 				const bodyTargetY = Math.min(box3.max.y * 0.62, box3.max.y - 0.15);

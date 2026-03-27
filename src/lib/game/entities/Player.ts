@@ -20,9 +20,6 @@ import {
 	DASH_SPEED,
 	DASH_DECEL,
 	DOUBLE_JUMP_MIN_LEVEL,
-	WING_GLIDE_MIN_FORM,
-	GLIDE_HOLD_TO_START_MS,
-	GLIDE_MAX_DURATION_MS,
 	DOUBLE_JUMP_FORCE_MULT,
 	playerGltfUrlListForBase,
 	playerUsesSkinnedGltfForBase,
@@ -88,10 +85,10 @@ export class Player {
 	private moveIntent = false;
 
 	private jumpsUsed = 0;
-	private glideHoldMs = 0;
-	private isGliding = false;
-	private glideAnchorY = 0;
-	private glideRemainingMs = 0;
+	/** 2단 점프 시 남은 회전 라디안 */
+	private doubleJumpSpinLeft = 0;
+	/** 2단 점프 중 누적 Y 회전 (lookAt 대신 baseYaw+이 값으로 적용) */
+	private doubleJumpSpinApplied = 0;
 
 	private readonly mechBase: MechBase;
 
@@ -113,6 +110,7 @@ export class Player {
 		this.parts = m.parts;
 		this.group.position.copy(pos);
 		this.group.scale.setScalar(scaleForLevel(1));
+		this.group.frustumCulled = false;
 		scene.add(this.group);
 		this.currentForm = 0;
 		this.createHitCircle(scene, pos);
@@ -190,8 +188,15 @@ export class Player {
 	private createHitCircle(scene: THREE.Scene, pos: THREE.Vector3): void {
 		const geo = new THREE.RingGeometry(1.3, 1.52, 40);
 		const mat = new THREE.MeshBasicMaterial({
-			color: 0x00ccff, transparent: true, opacity: 0.40,
-			side: THREE.DoubleSide, depthWrite: false
+			color: 0x00ccff,
+			transparent: true,
+			opacity: 0.4,
+			side: THREE.DoubleSide,
+			depthWrite: false,
+			depthTest: true,
+			polygonOffset: true,
+			polygonOffsetFactor: -1.5,
+			polygonOffsetUnits: -2
 		});
 		this.hitCircle = new THREE.Mesh(geo, mat);
 		this.hitCircle.rotation.x = -Math.PI / 2;
@@ -223,6 +228,7 @@ export class Player {
 				this.parts = payload.parts;
 				this.group.position.copy(pos);
 				this.group.scale.copy(scl);
+				this.group.frustumCulled = false;
 				this.scene.add(this.group);
 				const idle = pickSkinnedClip(payload.actions, ['Idle', 'Standing', 'idle'], [
 					'idle',
@@ -247,10 +253,7 @@ export class Player {
 		const { actions } = this.skinned;
 		let next = pickSkinnedClip(actions, ['Idle', 'Standing', 'idle'], ['idle', 'stand', 'tpose']);
 
-		if (this.isGliding && this.currentForm >= WING_GLIDE_MIN_FORM) {
-			next =
-				pickSkinnedClip(actions, ['Standing', 'Idle', 'Walking'], ['idle', 'walk', 'stand']) ?? next;
-		} else if (!this.isOnGround) {
+		if (!this.isOnGround) {
 			if (this.velocityY > 0.35) {
 				next =
 					pickSkinnedClip(actions, ['Jump'], ['jump', 'fall', 'air']) ??
@@ -324,6 +327,7 @@ export class Player {
 		this.parts = m.parts;
 		this.group.position.copy(pos);
 		this.group.scale.copy(scl);
+		this.group.frustumCulled = false;
 		this.scene.add(this.group);
 	}
 
@@ -410,10 +414,15 @@ export class Player {
 		this.clampBounds(stage);
 		this.animate(dt);
 		this.emitHud();
-		// 피격 원 위치 동기화 (플레이어 발 높이 추적)
+		// 피격 범위 링 — 발이 발판 위에 있을 때만 발판 높이 (수평만 겹칠 때는 지면)
 		if (this.hitCircle) {
+			const gy = stage.getGroundHeightForRing(
+				this.group.position.x,
+				this.group.position.z,
+				this.group.position.y
+			);
 			this.hitCircle.position.x = this.group.position.x;
-			this.hitCircle.position.y = this.group.position.y + 0.05;
+			this.hitCircle.position.y = gy + 0.065;
 			this.hitCircle.position.z = this.group.position.z;
 		}
 		// 머리 위 HUD 위치 동기화
@@ -537,8 +546,21 @@ export class Player {
 			this.group.position.z = resolved.z;
 			const facing = this.moveVelocity.clone().setY(0).normalize();
 			this.facing.copy(facing);
-			this.group.lookAt(from.x - facing.x, from.y, from.z - facing.z);
 		}
+
+		// 2단 점프 회전 누적 (lookAt은 매 프레임 회전을 덮어쓰므로 baseYaw + spin으로만 적용)
+		if (this.doubleJumpSpinLeft > 0) {
+			const rate = Math.PI * 2.4;
+			const step = Math.min(this.doubleJumpSpinLeft, rate * dt);
+			this.doubleJumpSpinApplied += step;
+			this.doubleJumpSpinLeft -= step;
+		}
+
+		const baseYaw = Math.atan2(this.facing.x, this.facing.z);
+		this.group.rotation.order = 'YXZ';
+		this.group.rotation.x = 0;
+		this.group.rotation.z = 0;
+		this.group.rotation.y = baseYaw + this.doubleJumpSpinApplied;
 
 		// ── 대쉬 속도 적용 (감속하며 소멸) ────────────────────────────────────
 		if (this.dashVelocity.lengthSq() > 0.04) {
@@ -578,7 +600,7 @@ export class Player {
 
 		this.dashCooldownMax = DASH_COOLDOWN * this.upgrades.dashCooldownMult;
 		this.dashCooldown = this.dashCooldownMax;
-		this.hitFlashTimer = -130;
+		// 대쉬 시 전신 하얀 플래시(hitFlashTimer 음수)는 점프 직후 그림자/재질 대비를 망가뜨릴 수 있어 생략
 		EventBus.emit('dash-update', { cooldown: this.dashCooldown, maxCooldown: this.dashCooldownMax });
 		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
 	}
@@ -588,79 +610,31 @@ export class Player {
 	private jump(input: InputManager): void {
 		const wantJump = input.justDown('KeyC') || input.justDown('Space');
 		if (!wantJump) return;
-		if (this.isGliding) this.endGlide();
 
 		if (this.isOnGround) {
 			this.velocityY = JUMP_FORCE;
 			this.isOnGround = false;
 			this.state = 'jumping';
 			this.jumpsUsed = 1;
+			this.doubleJumpSpinLeft = 0;
+			this.doubleJumpSpinApplied = 0;
 			return;
 		}
 		if (this.currentLevel >= DOUBLE_JUMP_MIN_LEVEL && this.jumpsUsed === 1) {
 			this.velocityY = JUMP_FORCE * DOUBLE_JUMP_FORCE_MULT;
 			this.jumpsUsed = 2;
 			this.state = 'jumping';
-		}
-	}
-
-	private endGlide(): void {
-		this.isGliding = false;
-		this.glideRemainingMs = 0;
-		this.glideHoldMs = 0;
-	}
-
-	private tryStartGlide(input: InputManager, dt: number): void {
-		if (this.currentForm < WING_GLIDE_MIN_FORM || this.jumpsUsed < 2 || this.isOnGround) {
-			this.glideHoldMs = 0;
-			return;
-		}
-		const holdKey = input.isDown('Space') || input.isDown('KeyC');
-		if (holdKey) {
-			this.glideHoldMs += dt * 1000;
-			if (this.glideHoldMs >= GLIDE_HOLD_TO_START_MS) {
-				this.isGliding = true;
-				this.glideAnchorY = this.group.position.y;
-				this.glideRemainingMs = GLIDE_MAX_DURATION_MS;
-				this.glideHoldMs = 0;
-				this.velocityY = 0;
-			}
-		} else {
-			this.glideHoldMs = 0;
+			this.doubleJumpSpinLeft = Math.PI * 2;
+			this.doubleJumpSpinApplied = 0;
 		}
 	}
 
 	// ── 중력 ──────────────────────────────────────────────────────────────────
 
-	private applyGravity(dt: number, stage: StageQuery, input: InputManager): void {
+	private applyGravity(dt: number, stage: StageQuery, _input: InputManager): void {
 		const gyProbe = this.group.position.y + 2;
 
-		if (this.isGliding) {
-			const spaceHeld = input.isDown('Space') || input.isDown('KeyC');
-			if (!spaceHeld || this.glideRemainingMs <= 0) {
-				this.endGlide();
-			} else {
-				this.glideRemainingMs -= dt * 1000;
-				this.velocityY = 0;
-				const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, gyProbe);
-				this.group.position.y = Math.max(this.glideAnchorY, gy);
-				if (this.group.position.y <= gy + 0.02) {
-					this.endGlide();
-					this.group.position.y = gy;
-					this.velocityY = 0;
-					this.isOnGround = true;
-					this.jumpsUsed = 0;
-					if (this.state === 'jumping') this.state = 'idle';
-				}
-				return;
-			}
-		}
-
-		if (!this.isOnGround && !this.isGliding) {
-			this.tryStartGlide(input, dt);
-		}
-
-		if (!this.isOnGround && !this.isGliding) this.velocityY += GRAVITY * dt;
+		if (!this.isOnGround) this.velocityY += GRAVITY * dt;
 		this.group.position.y += this.velocityY * dt;
 
 		const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, gyProbe);
@@ -670,7 +644,8 @@ export class Player {
 			if (!this.isOnGround) {
 				this.isOnGround = true;
 				this.jumpsUsed = 0;
-				this.glideHoldMs = 0;
+				this.doubleJumpSpinLeft = 0;
+				this.doubleJumpSpinApplied = 0;
 				if (this.state === 'jumping') this.state = 'idle';
 			}
 		} else {
@@ -695,19 +670,7 @@ export class Player {
 
 		const p = this.parts;
 
-		if (this.isGliding && this.currentForm >= WING_GLIDE_MIN_FORM) {
-			this.walkCycle += dt * 3.5;
-			const hover = Math.sin(this.walkCycle) * 0.04;
-			p.body.position.y += ((p.bodyTargetY + 0.10 + hover) - p.body.position.y) * 0.25;
-			p.leftArm.rotation.x  += (-0.25 - p.leftArm.rotation.x)  * 0.18;
-			p.rightArm.rotation.x += (-0.25 - p.rightArm.rotation.x) * 0.18;
-			p.leftArm.rotation.z  += (-1.0  - p.leftArm.rotation.z)  * 0.18;
-			p.rightArm.rotation.z += ( 1.0  - p.rightArm.rotation.z) * 0.18;
-			p.leftLeg.rotation.x  += (0.55 - p.leftLeg.rotation.x)  * 0.18;
-			p.rightLeg.rotation.x += (0.55 - p.rightLeg.rotation.x) * 0.18;
-			p.leftLeg.rotation.z  += (0.08 - p.leftLeg.rotation.z)  * 0.18;
-			p.rightLeg.rotation.z += (-0.08 - p.rightLeg.rotation.z) * 0.18;
-		} else if (this.moveIntent && this.isOnGround && this.state !== 'jumping') {
+		if (this.moveIntent && this.isOnGround && this.state !== 'jumping') {
 			const cycleSpeed = 10;
 			this.walkCycle += dt * cycleSpeed;
 			const s = Math.sin(this.walkCycle);
@@ -719,6 +682,14 @@ export class Player {
 			p.rightArm.rotation.z += (0 - p.rightArm.rotation.z) * 0.15;
 			p.leftLeg.rotation.z  += (0 - p.leftLeg.rotation.z)  * 0.15;
 			p.rightLeg.rotation.z += (0 - p.rightLeg.rotation.z) * 0.15;
+		} else if (this.state === 'jumping' && this.jumpsUsed === 2 && !this.isOnGround) {
+			// 2단 점프: 팔 벌림(회전은 group.rotation.y)
+			p.leftLeg.rotation.x  += (-0.55 - p.leftLeg.rotation.x)  * 0.18;
+			p.rightLeg.rotation.x += (-0.55 - p.rightLeg.rotation.x) * 0.18;
+			p.leftArm.rotation.x  += (0.35 - p.leftArm.rotation.x)  * 0.18;
+			p.rightArm.rotation.x += (0.35 - p.rightArm.rotation.x) * 0.18;
+			p.leftArm.rotation.z  += (-1.15 - p.leftArm.rotation.z)  * 0.2;
+			p.rightArm.rotation.z += ( 1.15 - p.rightArm.rotation.z) * 0.2;
 		} else if (this.state === 'jumping') {
 			p.leftLeg.rotation.x  += (-0.4 - p.leftLeg.rotation.x)  * 0.15;
 			p.rightLeg.rotation.x += (-0.4 - p.rightLeg.rotation.x) * 0.15;
@@ -778,9 +749,8 @@ export class Player {
 		this.velocityY = 0;
 		this.isOnGround = true;
 		this.jumpsUsed = 0;
-		this.glideHoldMs = 0;
-		this.isGliding = false;
-		this.glideRemainingMs = 0;
+		this.doubleJumpSpinLeft = 0;
+		this.doubleJumpSpinApplied = 0;
 		this.stunTimer = 0;
 		this.flashTimer = 0;
 		this.hitFlashTimer = 0;

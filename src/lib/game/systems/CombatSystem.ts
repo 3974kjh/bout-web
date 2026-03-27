@@ -30,7 +30,7 @@ export class CombatSystem {
 				.setY(0)
 				.normalize();
 
-			// 공격 모션 히트
+			// 공격 모션 히트만 (접촉 범위 데미지 없음)
 			if (m.isInAttackState() && dist <= 3.5) {
 				const dmg = calculateDamage(m.config.attack, this.player.stats.defense);
 				const hit = this.player.takeDamage(dmg, knockDir);
@@ -40,21 +40,6 @@ export class CombatSystem {
 						amount: dmg, type: 'take'
 					});
 					EventBus.emit('player-hit', { damage: dmg });
-				}
-			}
-
-			// 접촉 데미지: 몬스터가 플레이어에 닿으면 쿨다운마다 데미지
-			const contactRange = 1.5 * m.config.scale;
-			if (dist < contactRange && m.contactTimer <= 0) {
-				const contactDmg = Math.max(1, Math.floor(m.config.attack * 0.25));
-				const hit = this.player.takeDamage(contactDmg, knockDir);
-				m.contactTimer = 700; // 700ms 쿨다운
-				if (hit) {
-					EventBus.emit('damage-number', {
-						pos: this.player.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
-						amount: contactDmg, type: 'take'
-					});
-					EventBus.emit('player-hit', { damage: contactDmg });
 				}
 			}
 		}

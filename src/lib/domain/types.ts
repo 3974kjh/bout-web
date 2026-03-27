@@ -68,7 +68,13 @@ export interface MonsterConfig {
 }
 
 export interface StageQuery {
-	getGroundHeight(x: number, z: number, currentY: number): number;
+	/** xzMargin: 발판 가장자리에서 박스를 살짝 확장 */
+	getGroundHeight(x: number, z: number, currentY: number, xzMargin?: number): number;
+	/**
+	 * 발밑 원형 링용: 발 높이가 발판 상면과 맞을 때만 그 발판 높이를 반환.
+	 * 수평만 겹치고 아직 올라가지 않은 경우(발 아래)는 0(지면)만 사용.
+	 */
+	getGroundHeightForRing(x: number, z: number, footY: number): number;
 	resolveMovement(
 		fromX: number,
 		fromZ: number,

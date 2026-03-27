@@ -17,7 +17,7 @@ import { TrainingPlanet } from '../stages/TrainingPlanet';
 import { DamageNumbers } from '../ui/DamageNumbers';
 import { EventBus } from '../bridge/EventBus';
 import type { MechParts, MonsterConfig } from '$lib/domain/types';
-import { computeRunScore } from '../constants/GameConfig';
+import { computeRunScore, VICTORY_SURVIVAL_SECONDS } from '../constants/GameConfig';
 
 type BossAoeKind = NonNullable<MonsterConfig['bossAnimalType']>;
 
@@ -125,7 +125,10 @@ export class GameEngine {
 	};
 	private enemyProjectileHandler = (...args: unknown[]): void => {
 		const d = args[0] as { pos: THREE.Vector3; dir: THREE.Vector3; damage: number; speed: number };
-		this.projectiles.push(new Projectile(this.scene, d.pos.clone(), d.dir.clone(), d.speed, d.damage, 0xff4400));
+		const t = Math.max(0, this.survivalTime);
+		const timeScale = 1 + 0.55 * Math.min(t / VICTORY_SURVIVAL_SECONDS, 1);
+		const spd = d.speed * timeScale;
+		this.projectiles.push(new Projectile(this.scene, d.pos.clone(), d.dir.clone(), spd, d.damage, 0xff4400));
 	};
 	private playerHitHandler = (): void => {
 		this.camCtrl.shake(0.28, 180);
@@ -178,12 +181,17 @@ export class GameEngine {
 		const dir = new THREE.DirectionalLight(0xffffff, 2.2);
 		dir.position.set(15, 30, 15);
 		dir.castShadow = true;
-		dir.shadow.mapSize.set(1024, 1024);
-		dir.shadow.camera.left   = -40;
-		dir.shadow.camera.right  =  40;
-		dir.shadow.camera.top    =  40;
-		dir.shadow.camera.bottom = -40;
-		dir.shadow.camera.far = 80;
+		dir.shadow.mapSize.set(2048, 2048);
+		const sc = dir.shadow.camera;
+		sc.left = -95;
+		sc.right = 95;
+		sc.top = 95;
+		sc.bottom = -95;
+		sc.near = 0.15;
+		sc.far = 260;
+		sc.updateProjectionMatrix();
+		dir.shadow.bias = -0.00022;
+		dir.shadow.normalBias = 0.035;
 		this.scene.add(dir);
 	}
 
@@ -224,9 +232,9 @@ export class GameEngine {
 
 		// 초기 웨이브 몬스터
 		const initialConfigs: MonsterConfig[] = [
-			{ name: '베타 머신', hp: 35, attack: 7, defense: 3, speed: 3.8, detectionRange: 22, attackRange: 2.5, bodyColor: 0xcc6611, accentColor: 0xeeaa44, scale: 1.15 },
-			{ name: '베타 머신', hp: 35, attack: 7, defense: 3, speed: 3.8, detectionRange: 22, attackRange: 2.5, bodyColor: 0xcc6611, accentColor: 0xeeaa44, scale: 1.15 },
-			{ name: '알파 머신', hp: 30, attack: 8, defense: 2, speed: 5.0, detectionRange: 26, attackRange: 2.2, bodyColor: 0xaa1111, accentColor: 0x222222, scale: 1.1 },
+			{ name: '베타 머신', hp: 35, attack: 10, defense: 3, speed: 3.8, detectionRange: 22, attackRange: 2.5, bodyColor: 0xcc6611, accentColor: 0xeeaa44, scale: 1.15 },
+			{ name: '베타 머신', hp: 35, attack: 10, defense: 3, speed: 3.8, detectionRange: 22, attackRange: 2.5, bodyColor: 0xcc6611, accentColor: 0xeeaa44, scale: 1.15 },
+			{ name: '알파 머신', hp: 30, attack: 12, defense: 2, speed: 5.0, detectionRange: 26, attackRange: 2.2, bodyColor: 0xaa1111, accentColor: 0x222222, scale: 1.1 },
 		];
 		for (const cfg of initialConfigs) this.spawnMonster(cfg);
 
@@ -750,30 +758,41 @@ export class GameEngine {
 		);
 	}
 
+	private emitGameEnd(victory: boolean): void {
+		if (this.isGameOver) return;
+		this.isGameOver = true;
+		EventBus.emit('survival-time-update', { seconds: this.survivalTime });
+		const survivalSec = Math.floor(this.survivalTime);
+		const lv = this.levelSystem.level;
+		const bosses = { ...this.bossKillsByType };
+		const score = computeRunScore({
+			level: lv,
+			survivalSeconds: survivalSec,
+			bossKills: bosses
+		});
+		const shop = getShopSettingsForGame();
+		EventBus.emit('game-over', {
+			victory,
+			survivalTime: survivalSec,
+			bossCount: this.waveSystem.bossCount,
+			level: lv,
+			normalKills: this.normalMonsterKills,
+			bosses,
+			scoreTotal: score.total,
+			scoreBoss: score.partBoss,
+			scoreLevel: score.partLevel,
+			scoreTime: score.partTime,
+			mechBase: shop.mechBase
+		});
+	}
+
 	private checkEnd(): void {
 		if (this.player.state === 'dead') {
-			this.isGameOver = true;
-			const survivalSec = Math.floor(this.survivalTime);
-			const lv = this.levelSystem.level;
-			const bosses = { ...this.bossKillsByType };
-			const score = computeRunScore({
-				level: lv,
-				survivalSeconds: survivalSec,
-				bossKills: bosses
-			});
-			const shop = getShopSettingsForGame();
-			EventBus.emit('game-over', {
-				survivalTime: survivalSec,
-				bossCount: this.waveSystem.bossCount,
-				level: lv,
-				normalKills: this.normalMonsterKills,
-				bosses,
-				scoreTotal: score.total,
-				scoreBoss: score.partBoss,
-				scoreLevel: score.partLevel,
-				scoreTime: score.partTime,
-				mechBase: shop.mechBase
-			});
+			this.emitGameEnd(false);
+			return;
+		}
+		if (this.survivalTime >= VICTORY_SURVIVAL_SECONDS) {
+			this.emitGameEnd(true);
 		}
 	}
 

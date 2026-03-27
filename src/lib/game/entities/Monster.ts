@@ -22,9 +22,6 @@ export class Monster {
 	private shootTimer = 0;
 	wasHitThisSwing = false;
 
-	// 접촉 데미지 쿨다운 (ms)
-	contactTimer = 0;
-
 	hitCounter = 0;
 	private knockdownGroupRotX = 0;
 
@@ -124,7 +121,6 @@ export class Monster {
 		if (this.hp <= 0) return;
 		const ms = dt * 1000;
 		this.stateTimer += ms;
-		if (this.contactTimer > 0) this.contactTimer = Math.max(0, this.contactTimer - ms);
 
 		if (this.flashTimer > 0) {
 			this.flashTimer -= ms;
@@ -275,7 +271,7 @@ export class Monster {
 						pos: this.group.position.clone().add(new THREE.Vector3(0, 1.0, 0)),
 						dir,
 						damage: Math.max(1, Math.floor(this.config.attack * 0.8)),
-						speed: this.config.projectileSpeed ?? 9
+						speed: this.config.projectileSpeed ?? 12
 					});
 				}
 				break;

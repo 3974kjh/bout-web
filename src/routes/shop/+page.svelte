@@ -89,8 +89,8 @@
 		{/if}
 	</header>
 
-	<div class="shop-body">
-		<div class="col-main">
+	<div class="shop-body bout-scrollbar">
+		<div class="col-main bout-scrollbar">
 			<section class="panel" aria-labelledby="sec-mech">
 				<h2 id="sec-mech" class="sec-title">캐릭터 (기체)</h2>
 				<p class="sec-desc">
@@ -145,7 +145,7 @@
 					최대 <strong>{MAX_FAVORED_CARDS}</strong>장. <code>getRandomCards</code> 풀에서 가중치가 올라갑니다.
 				</p>
 				<p class="favor-count">선택 {settings.favoredCardIds.length} / {MAX_FAVORED_CARDS}</p>
-				<div class="card-pool">
+				<div class="card-pool bout-scrollbar">
 					{#each catalog as card (card.id)}
 						<button
 							type="button"
@@ -165,7 +165,7 @@
 		</div>
 
 		<aside class="col-side" aria-label="선택 기체 미리보기">
-			<div class="side-sticky">
+			<div class="side-sticky bout-scrollbar">
 				<h2 class="side-title">선택 기체</h2>
 				<div class="side-mech-head">
 					<span class="sm-name">{MECH_SHOP_INFO[settings.mechBase].name}</span>
@@ -360,8 +360,6 @@
 		max-height: 100%;
 		overflow-y: auto;
 		padding-bottom: 1rem;
-		scrollbar-width: thin;
-		scrollbar-color: rgba(0, 180, 255, 0.35) transparent;
 	}
 
 	.side-title {
@@ -549,8 +547,6 @@
 		max-height: min(42vh, 420px);
 		overflow-y: auto;
 		padding: 0.1rem 0;
-		scrollbar-width: thin;
-		scrollbar-color: rgba(0, 180, 255, 0.35) transparent;
 	}
 
 	.card-pill {
