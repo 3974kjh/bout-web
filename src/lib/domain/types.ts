@@ -22,8 +22,28 @@ export interface Part {
 
 export type MechParts = Record<PartSlot, Part | null>;
 
-export type PlayerState = 'idle' | 'walking' | 'jumping' | 'attacking' | 'guarding' | 'stunned' | 'dead';
-export type MonsterAIState = 'idle' | 'chase' | 'attack' | 'rangedAttack' | 'stun';
+export type PlayerState = 'idle' | 'walking' | 'jumping' | 'stunned' | 'dead';
+export type MonsterAIState = 'idle' | 'chase' | 'attack' | 'rangedAttack' | 'stun' | 'knockdown';
+
+/** 뱀서라이크 업그레이드 스탯 */
+export interface PlayerUpgrades {
+	missileDamage: number;
+	missileSpeed: number;
+	fireRateMs: number;
+	missileCount: number;
+	piercingCount: number;
+	isHoming: boolean;
+	isExplosive: boolean;
+	explosionRadius: number;
+	missileScale: number;
+	spreadShot: boolean;
+	collectRange: number;
+	magnetRange: number;
+	moveSpeedMult: number;
+	maxHpMult: number;
+	pendingHealPct: number;
+	dashCooldownMult: number; // 대쉬 쿨타임 배율 (0 < x ≤ 1)
+}
 
 export interface MonsterConfig {
 	name: string;
@@ -40,6 +60,11 @@ export interface MonsterConfig {
 	isRanged?: boolean;
 	projectileSpeed?: number;
 	fireRateMs?: number;
+	// 보스 전용: AOE 공격
+	bossAnimalType?: 'bear' | 'wolf' | 'dragon' | 'tiger' | 'ironlord';
+	aoeRadius?: number;
+	aoeFillMs?: number;
+	aoeCooldownMs?: number;
 }
 
 export interface StageQuery {

@@ -11,7 +11,9 @@ const GAME_KEYS = [
 	'KeyX',
 	'KeyC',
 	'KeyV',
-	'Space'
+	'Space',
+	'ShiftLeft',
+	'ShiftRight'
 ];
 
 export class InputManager {

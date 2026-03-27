@@ -1,18 +1,16 @@
 import * as THREE from 'three';
 import type { Player } from '../entities/Player';
 import type { Monster } from '../entities/Monster';
-import { MELEE_RANGE, GAUGE_ON_DEAL, GAUGE_ON_TAKE, GUARD_REDUCE } from '../constants/GameConfig';
 import { EventBus } from '../bridge/EventBus';
 
 export function calculateDamage(atk: number, def: number): number {
 	return Math.max(1, Math.floor(atk - def * 0.5));
 }
 
+/** 몬스터 → 플레이어 근접 공격만 처리. 플레이어 공격은 GameEngine 자동 미사일로 처리 */
 export class CombatSystem {
 	private player: Player;
 	private monsters: Monster[];
-	private hitSet = new Set<string>();
-	private lastCombo = -1;
 
 	constructor(player: Player, monsters: Monster[]) {
 		this.player = player;
@@ -20,98 +18,45 @@ export class CombatSystem {
 	}
 
 	update(): void {
-		if (this.player.activeAttack !== this.lastCombo) {
-			this.hitSet.clear();
-			this.lastCombo = this.player.activeAttack;
-			for (const m of this.monsters) m.wasHitThisSwing = false;
-		}
-		this.playerAttacks();
 		this.monsterAttacks();
-	}
-
-	private playerAttacks(): void {
-		if (!this.player.isAttackHitFrame()) return;
-
-		const atk = this.player.stats.attack;
-		for (const m of this.monsters) {
-			if (m.isDead() || this.hitSet.has(m.id)) continue;
-
-			// Distance check
-			const toEnemy = new THREE.Vector3()
-				.subVectors(m.group.position, this.player.group.position)
-				.setY(0);
-			const distSq = toEnemy.lengthSq();
-			if (distSq > MELEE_RANGE * MELEE_RANGE) continue;
-
-			// Angle check — must be within the forward attack sweep arc (~140°)
-			if (distSq > 0.25) {
-				toEnemy.normalize();
-				const dot = this.player.facing.dot(toEnemy);
-				if (dot < 0.2) continue; // outside ~78° from facing = outside sweep arc
-			}
-
-			const dmg = calculateDamage(atk, m.config.defense);
-			const knockDir = new THREE.Vector3()
-				.subVectors(m.group.position, this.player.group.position)
-				.setY(0)
-				.normalize();
-			m.takeDamage(dmg, knockDir);
-			this.hitSet.add(m.id);
-
-			this.player.stats.transformGauge = Math.min(
-				this.player.stats.maxTransformGauge,
-				this.player.stats.transformGauge + GAUGE_ON_DEAL
-			);
-
-			// Floating damage number at enemy position
-			EventBus.emit('damage-number', {
-				pos: m.group.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
-				amount: dmg,
-				type: 'deal'
-			});
-
-			if (m.isDead()) this.onKill(m);
-		}
 	}
 
 	private monsterAttacks(): void {
 		for (const m of this.monsters) {
-			if (m.isDead() || !m.isInAttackState()) continue;
+			if (m.isDead()) continue;
 			const dist = m.group.position.distanceTo(this.player.group.position);
-			if (dist > 3.5) continue;
-
-			let dmg = calculateDamage(m.config.attack, this.player.stats.defense);
-			if (this.player.state === 'guarding') dmg = Math.floor(dmg * (1 - GUARD_REDUCE));
-
 			const knockDir = new THREE.Vector3()
 				.subVectors(this.player.group.position, m.group.position)
 				.setY(0)
 				.normalize();
-			const hit = this.player.takeDamage(dmg, this.player.state === 'guarding' ? undefined : knockDir);
-			if (hit) {
-				this.player.stats.transformGauge = Math.min(
-					this.player.stats.maxTransformGauge,
-					this.player.stats.transformGauge + GAUGE_ON_TAKE
-				);
 
-				// Floating damage number at player position
-				EventBus.emit('damage-number', {
-					pos: this.player.group.position.clone().add(new THREE.Vector3(0, 0.5, 0)),
-					amount: dmg,
-					type: 'take'
-				});
+			// 공격 모션 히트
+			if (m.isInAttackState() && dist <= 3.5) {
+				const dmg = calculateDamage(m.config.attack, this.player.stats.defense);
+				const hit = this.player.takeDamage(dmg, knockDir);
+				if (hit) {
+					EventBus.emit('damage-number', {
+						pos: this.player.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+						amount: dmg, type: 'take'
+					});
+					EventBus.emit('player-hit', { damage: dmg });
+				}
 			}
-		}
-	}
 
-	private onKill(m: Monster): void {
-		const alive = this.monsters.filter((x) => !x.isDead()).length - 1;
-		EventBus.emit('monster-count-update', {
-			remaining: Math.max(0, alive),
-			total: this.monsters.length
-		});
-		if (m.config.isBoss) {
-			EventBus.emit('boss-defeated');
+			// 접촉 데미지: 몬스터가 플레이어에 닿으면 쿨다운마다 데미지
+			const contactRange = 1.5 * m.config.scale;
+			if (dist < contactRange && m.contactTimer <= 0) {
+				const contactDmg = Math.max(1, Math.floor(m.config.attack * 0.25));
+				const hit = this.player.takeDamage(contactDmg, knockDir);
+				m.contactTimer = 700; // 700ms 쿨다운
+				if (hit) {
+					EventBus.emit('damage-number', {
+						pos: this.player.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+						amount: contactDmg, type: 'take'
+					});
+					EventBus.emit('player-hit', { damage: contactDmg });
+				}
+			}
 		}
 	}
 

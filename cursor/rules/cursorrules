@@ -1,44 +1,52 @@
 # BOUT — Cursor Rules
 
-## Project
-한게임 '바우트' 스타일 2D 액션 게임 웹 클론.
-SvelteKit(라우팅/UI) + Phaser 3(게임 루프) + TypeScript + Supabase(Phase 3).
+## 프로젝트 개요
+웹 기반 **3D 메카 서바이벌 액션**. SvelteKit(라우팅·UI·HUD) + Three.js(3D 루프) + TypeScript strict.  
+바우트(B.O.U.T.)에서 영감을 받았으나, **현재 플레이 루프는 뱀서라이크형 성장 + 자동 사격 + 웨이브/보스**에 가깝다.
 
 ## Docs (먼저 참고)
-- 구조/의존성 → Architecture.md
-- 타입/엔티티 → DomainModels.md
-- API 계약 → API.md
-- 현재 작업 범위 → Project_milestones.md
+| 파일 | 내용 |
+|------|------|
+| `Architecture.md` | 디렉터리, 레이어, 씬 구조, EventBus 개요 |
+| `DomainModels.md` | `types.ts` 기준 도메인·몬스터 설정 |
+| `API.md` | EventBus 이벤트 계약 (페이로드) |
+| `Project_milestones.md` | 단계별 목표·완료 범위 |
 
 ## Stack rules
-- SvelteKit: 라우팅, UI, 로그인, Supabase 연동
-- Phaser: 전투 루프, 씬, 스프라이트, 충돌, 입력 — Svelte 로직 혼입 금지
-- Svelte ↔ Phaser: 이벤트 버스 또는 명시적 콜백으로만 연결
-- Supabase: `src/lib/supabase/client.ts` 단일 초기화, 씬 내부 직접 사용 금지
-- SCSS: `@use` only, abstracts는 CSS 출력 없음, 테마는 CSS 변수로
+- **SvelteKit**: 라우팅, 메인 메뉴, 게임 페이지 마운트, HUD
+- **Three.js**: 씬·렌더·엔티티 업데이트 — **Svelte 반응성/스토어를 게임 루프에 직접 연결하지 않음**
+- **경계**: 게임 ↔ UI는 `EventBus`로만 통신 (`emit` / `on` / `off`)
+- **TypeScript strict**: 불필요한 `any` 지양, 공개 API는 타입 명시
+- **Supabase / 멀티**: Phase 3 예정 — 현재 본 코드에 혼입하지 않음 (필요 시 `// TODO: MULTI`)
 
-## Coding style
-- TypeScript strict, `any` 금지
-- Svelte 컴포넌트: `<script lang="ts">`, PascalCase 파일명
-- Phaser 씬/클래스: PascalCase, 파일 1개 = 클래스 1개
-- 주석은 "왜"만, "무엇"은 코드 이름으로
+## 코딩 스타일
+- Svelte 5: `runes`/`$props` 등 프로젝트 기존 패턴 유지
+- 게임 코드: 파일 1개 = 주요 책임 1개, PascalCase 클래스
+- 주석은 **비직관적 트레이드오프·안전 조건** 위주 (당연한 설명 금지)
 
-## Interaction
-- 한 번에 기능 1개 또는 파일 1~2개만 수정/생성
-- `@codebase`는 전역 설계 검토·리팩터링 때만, 평소엔 `@file` 위주
-- 대화 30메시지 초과 시 새 세션 열고 핵심 맥락만 이관
-- 프레임워크 기초 설명 생략 (SvelteKit/Phaser 기본 사용법은 이미 앎)
-- 에러 시 에러 메시지 + 최소 코드 조각만으로 해결책 제시
+## 현재 게임 메카닉 (요약)
+- **이동**: WASD, **점프**: Space / C, **대쉬**: Shift (머리 위 스프라이트 HUD에 쿨 표시)
+- **사격**: 자동 미사일 (업그레이드로 강화)
+- **성장**: EXP 조각 수집 → 레벨업 → **카드 3선택 1** (`UpgradeSystem`)
+- **맵**: `TrainingPlanet` — 지형·플랫폼·충돌·발판 루트
+- **발판 루트**: 체력 포션 / 카드 보급 캐시 (`PlatformLoot`)
+- **웨이브**: `WaveSystem` — 잡몹 상시 스폰, 주기적 **동물 테마 보스** (5종 로테이션 + AOE)
+- **진화**: 레벨에 따른 메카 폼(`MechModel.formForLevel`) — Lv10+ 2단 점프, form7+ 공중 길게 누르기 글라이드
+- **HUD**: 생존 시간, 미니맵, 킬 통계, 오버드라이브, 게임오버 시 점수·보스별 처치 상세
 
-## Response format
-- 완성된 코드만 출력, 불필요한 설명 생략
-- 기존 파일 수정: 수정된 전체 파일 1회만 출력
-- 새 파일: 첫 줄에 경로 명시 후 코드 전체 출력
-  예) `// src/lib/phaser/scenes/BattleScene.ts`
-- 설명 필요 시 최대 5줄 요약만
+## 레거시·미연결 코드
+- `TransformSystem.ts`, `HealthItem.ts` 등은 저장소에 존재할 수 있으나 **현재 `GameEngine` 루프에는 미연결**일 수 있음. 문서/기능 설명은 **실제 엔진 경로**를 기준으로 할 것.
+
+## 작업 방식
+- 한 번에 범위가 크면 단계 나누기; 불필요한 리팩터·무관 파일 수정 금지
+- 규칙/아키텍처와 코드가 어긋나면 **규칙 문서를 먼저 고칠지** 사용자에게 확인
+
+## 응답 형식
+- **사용자 규칙·시스템 지시와 충돌 시 사용자 쪽을 우선**
+- 코드 인용은 ```startLine:endLine:path``` 형식
+- 변경 요약은 명확·간결하게; 불필요한 장황함 지양
 
 ## Phase guard
-- Phase 1 (현재): 싱글 전투 코어 — 멀티/Supabase 코드 혼입 금지
-- Phase 2: SvelteKit UI/메뉴/스테이지
-- Phase 3: Supabase 스키마 문서 정의 후 구현 시작
-- 멀티 관련 코드는 `// TODO: MULTI` 주석으로 표시
+- **Phase 1 (현재)**: 싱글 플레이 3D 서바이벌 코어 — 멀티·백엔드 혼입 금지
+- **Phase 2**: 메뉴 확장, 종족/파츠 선택 UI, 스테이지 선택 등
+- **Phase 3**: Supabase·실시간 동기화 (`API.md` 스키마 선행)

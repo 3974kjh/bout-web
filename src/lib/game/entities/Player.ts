@@ -1,62 +1,278 @@
 import * as THREE from 'three';
-import { createMechModel, createTransformedMechModel, type MechParts3D } from './MechModel';
+import { createMechModel, type MechParts3D, MECH_BODY_Y, createEvolvedModel, formForLevel } from './MechModel';
 import { EventBus } from '../bridge/EventBus';
 import type { InputManager } from '../core/InputManager';
-import type { MechStats, TransformState, PlayerState, StageQuery } from '$lib/domain/types';
+import type { MechStats, PlayerState, StageQuery, PlayerUpgrades } from '$lib/domain/types';
 import {
 	GRAVITY,
 	JUMP_FORCE,
-	COMBO_WINDOW_MS,
-	ATTACK_DURATIONS_MS,
-	ATTACK_COOLDOWN_MS,
 	STUN_MS,
-	IFRAME_MS,
-	MELEE_RANGE
+	DASH_COOLDOWN,
+	DASH_SPEED,
+	DASH_DECEL,
+	DOUBLE_JUMP_MIN_LEVEL,
+	WING_GLIDE_MIN_FORM,
+	GLIDE_HOLD_TO_START_MS,
+	GLIDE_MAX_DURATION_MS,
+	DOUBLE_JUMP_FORCE_MULT
 } from '../constants/GameConfig';
 
-// Visual scale for the player mesh (does not affect physics/collision)
+/** 기본 진화 모델 스케일 */
 const MODEL_SCALE = 1.5;
+
+/** 레벨에 따른 그룹 스케일 — 크기는 최소화, 디자인 진화에 집중 */
+function scaleForLevel(lv: number): number {
+	return 0.82 + lv * 0.020; // Lv1: 0.84, Lv20: 1.22
+}
 
 export class Player {
 	group: THREE.Group;
 	parts: MechParts3D;
 	stats: MechStats;
 	state: PlayerState = 'idle';
-	transformState: TransformState = 'normal';
 
 	velocityY = 0;
 	isOnGround = true;
 	facing = new THREE.Vector3(0, 0, -1);
 
-	comboIndex = 0;
-	activeAttack = -1;
-	attackTimer = 0;
-	comboTimer = 0;
-	cooldownTimer = 0;
 	stunTimer = 0;
-	iFrameTimer = 0;
+
+	upgrades: PlayerUpgrades = {
+		missileDamage: 8,
+		missileSpeed: 14,
+		fireRateMs: 1500,
+		missileCount: 1,
+		piercingCount: 0,
+		isHoming: false,
+		isExplosive: false,
+		explosionRadius: 3.0,
+		missileScale: 1.0,
+		spreadShot: false,
+		collectRange: 1.8,
+		magnetRange: 5.0,
+		moveSpeedMult: 1.0,
+		maxHpMult: 1.0,
+		pendingHealPct: 0,
+		dashCooldownMult: 1.0
+	};
+
+	// 대쉬
+	dashCooldown = 0;     // 현재 남은 쿨타임 (초)
+	dashCooldownMax = DASH_COOLDOWN; // 현재 최대 쿨타임 (초)
 
 	private walkCycle = 0;
 	private scene: THREE.Scene;
+	private flashTimer = 0;
+	private hitFlashTimer = 0;
+	private currentForm = -1;
+	private currentLevel = 1;
+	private hitCircle!: THREE.Mesh;
+	private headHud!: THREE.Sprite;
+	private headHudTex!: THREE.CanvasTexture;
+	private headHudCanvas!: HTMLCanvasElement;
+	private moveVelocity = new THREE.Vector3();
+	private dashVelocity = new THREE.Vector3(); // 대쉬 속도 벡터 (감속하며 소멸)
 
-	// Attack effect (direct mesh refs for performance — no traverse)
-	private attackEffectGroup: THREE.Group | null = null;
-	private attackSweepGroup: THREE.Group | null = null;
-	private attackRingMesh: THREE.Mesh | null = null;
-	private attackSweepMeshes: THREE.Mesh[] = [];
-	private attackEffectLife = 0;
-	private attackEffectMaxLife = 0;
-	private flashActive = false;
+	private jumpsUsed = 0;
+	private glideHoldMs = 0;
+	private isGliding = false;
+	private glideAnchorY = 0;
+	private glideRemainingMs = 0;
 
 	constructor(scene: THREE.Scene, pos: THREE.Vector3, stats: MechStats) {
 		this.scene = scene;
 		this.stats = { ...stats };
-		const m = createMechModel(0x3366ff, 0x5588ff, MODEL_SCALE);
+		const m = createEvolvedModel(0, MODEL_SCALE);
 		this.group = m.group;
 		this.parts = m.parts;
 		this.group.position.copy(pos);
+		this.group.scale.setScalar(scaleForLevel(1));
 		scene.add(this.group);
+		this.currentForm = 0;
+		this.createHitCircle(scene, pos);
+		this.createHeadHud(scene, pos);
 	}
+
+	private createHeadHud(scene: THREE.Scene, pos: THREE.Vector3): void {
+		const canvas = document.createElement('canvas');
+		canvas.width = 122; canvas.height = 18;
+		this.headHudCanvas = canvas;
+		this.headHudTex = new THREE.CanvasTexture(canvas);
+		const mat = new THREE.SpriteMaterial({ map: this.headHudTex, depthTest: false, transparent: true });
+		this.headHud = new THREE.Sprite(mat);
+		this.headHud.scale.set(4.9, 0.62, 1);
+		this.headHud.renderOrder = 200;
+		this.headHud.position.set(pos.x, pos.y + 3.5, pos.z);
+		scene.add(this.headHud);
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, 1);
+	}
+
+	drawHeadHud(hp: number, maxHp: number, level: number): void {
+		const ctx = this.headHudCanvas.getContext('2d');
+		if (!ctx) return;
+		const W = 122, H = 18;
+		ctx.clearRect(0, 0, W, H);
+
+		// 대쉬 배지 (레벨 왼쪽)
+		const dashReady = this.dashCooldown <= 0;
+		const dashPct = this.dashCooldownMax > 0 ? Math.max(0, 1 - this.dashCooldown / this.dashCooldownMax) : 1;
+		ctx.fillStyle = 'rgba(0,30,60,0.88)';
+		ctx.fillRect(0, 0, 20, H);
+		ctx.strokeStyle = 'rgba(0,200,255,0.8)';
+		ctx.lineWidth = 1;
+		ctx.strokeRect(0.5, 0.5, 19, H - 1);
+		ctx.beginPath();
+		ctx.arc(10, H / 2, 5.4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * dashPct);
+		ctx.strokeStyle = dashReady ? '#00eeff' : '#0077cc';
+		ctx.lineWidth = 1.7;
+		ctx.stroke();
+		ctx.fillStyle = dashReady ? '#00eeff' : '#8aa7c7';
+		ctx.font = 'bold 8px Arial';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(dashReady ? 'D' : String(Math.ceil(this.dashCooldown)), 10, H / 2 + 0.3);
+
+		// 레벨 배지
+		ctx.fillStyle = 'rgba(0,30,60,0.88)';
+		ctx.fillRect(22, 0, 22, H);
+		ctx.strokeStyle = '#00ccff';
+		ctx.lineWidth = 1;
+		ctx.strokeRect(22.5, 0.5, 21, H - 1);
+		ctx.fillStyle = '#00eeff';
+		ctx.font = 'bold 11px Arial';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(String(level), 33, H / 2 + 0.3);
+
+		// HP 바 배경
+		ctx.fillStyle = 'rgba(0,0,0,0.75)';
+		ctx.fillRect(46, 2, W - 48, H - 4);
+		// HP 바 채움 (오른쪽에서 왼쪽으로 감소)
+		const ratio = maxHp > 0 ? Math.max(0, hp / maxHp) : 0;
+		const fillW = Math.max(0, ratio * (W - 50));
+		const fillColor = ratio > 0.5 ? '#33dd66' : ratio > 0.25 ? '#ffcc00' : '#ff4444';
+		ctx.fillStyle = fillColor;
+		ctx.fillRect(47, 3, fillW, H - 6);
+		// 테두리
+		ctx.strokeStyle = 'rgba(0,200,255,0.6)';
+		ctx.lineWidth = 0.8;
+		ctx.strokeRect(46, 2, W - 48, H - 4);
+		this.headHudTex.needsUpdate = true;
+	}
+
+	private createHitCircle(scene: THREE.Scene, pos: THREE.Vector3): void {
+		const geo = new THREE.RingGeometry(1.3, 1.52, 40);
+		const mat = new THREE.MeshBasicMaterial({
+			color: 0x00ccff, transparent: true, opacity: 0.40,
+			side: THREE.DoubleSide, depthWrite: false
+		});
+		this.hitCircle = new THREE.Mesh(geo, mat);
+		this.hitCircle.rotation.x = -Math.PI / 2;
+		this.hitCircle.renderOrder = 2;
+		this.hitCircle.position.set(pos.x, 0.03, pos.z);
+		scene.add(this.hitCircle);
+	}
+
+	// ── 레벨 진화: form이 바뀌면 모델 전체 교체 ──────────────────────────────
+
+	getCurrentLevel(): number { return this.currentLevel; }
+
+	setLevel(level: number): void {
+		const prevLv = this.currentLevel;
+		this.currentLevel = level;
+		if (level > prevLv) {
+			for (let i = prevLv; i < level; i++) {
+				this.applyLevelMaxHpGrowth();
+			}
+		}
+		const newForm  = formForLevel(level);
+		const newScale = scaleForLevel(level);
+		this.group.scale.setScalar(newScale);
+		// 즉시 머리 위 HUD 레벨 반영
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+
+		if (newForm !== this.currentForm) {
+			this.currentForm = newForm;
+			this.rebuildModel(newForm);
+			this.hitFlashTimer = -200; // 하얀 플래시
+		}
+	}
+
+	/** 레벨업 1회당 최대 HP 소폭 증가 + 증가분만큼 현재 HP 보정 */
+	private applyLevelMaxHpGrowth(): void {
+		const oldMax = this.stats.maxHp;
+		this.stats.maxHp = Math.max(oldMax + 2, Math.floor(oldMax * 1.035));
+		const gain = this.stats.maxHp - oldMax;
+		this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + gain);
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+		EventBus.emit('hp-update', { hp: this.stats.hp, maxHp: this.stats.maxHp });
+	}
+
+	private rebuildModel(form: number): void {
+		const pos = this.group.position.clone();
+		const scl = this.group.scale.clone();
+		// 기존 모델 제거
+		this.scene.remove(this.group);
+		// 새 모델 생성
+		const m = createEvolvedModel(form, MODEL_SCALE);
+		this.group = m.group;
+		this.parts = m.parts;
+		this.group.position.copy(pos);
+		this.group.scale.copy(scl);
+		this.scene.add(this.group);
+	}
+
+	// ── 외부 API ──────────────────────────────────────────────────────────────
+
+	applyMaxHpUpgrade(): void {
+		const prev = this.stats.maxHp;
+		this.stats.maxHp = Math.floor(this.stats.maxHp * this.upgrades.maxHpMult);
+		this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + (this.stats.maxHp - prev));
+		this.upgrades.maxHpMult = 1.0;
+	}
+
+	applyPendingHeal(): void {
+		if (this.upgrades.pendingHealPct > 0) {
+			this.stats.hp = Math.min(
+				this.stats.maxHp,
+				this.stats.hp + Math.floor(this.stats.maxHp * this.upgrades.pendingHealPct)
+			);
+			this.upgrades.pendingHealPct = 0;
+			this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+		}
+	}
+
+	/** 발판 포션 등 즉시 회복 (maxHp 비율) */
+	healByMaxHpFraction(pct: number): void {
+		if (this.state === 'dead') return;
+		const add = Math.max(1, Math.floor(this.stats.maxHp * pct));
+		this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + add);
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+		EventBus.emit('hp-update', { hp: this.stats.hp, maxHp: this.stats.maxHp });
+	}
+
+	takeDamage(amount: number, knockDir?: THREE.Vector3): boolean {
+		if (this.state === 'dead') return false;
+		this.stats.hp = Math.max(0, this.stats.hp - amount);
+		this.hitFlashTimer = 200;
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+
+		if (knockDir) {
+			this.group.position.addScaledVector(knockDir, 1.4);
+		}
+		if (this.stats.hp <= 0) {
+			this.state = 'dead';
+			// game-over 페이로드는 GameEngine.checkEnd에서 일괄 전송
+		}
+		return true;
+	}
+
+	/** 미사일 발사 플래시 (총 쏘는 포즈 트리거) */
+	triggerFireFlash(): void {
+		this.flashTimer = 140;
+	}
+
+	// ── 메인 업데이트 ─────────────────────────────────────────────────────────
 
 	update(dt: number, input: InputManager, stage: StageQuery): void {
 		if (this.state === 'dead') return;
@@ -64,245 +280,261 @@ export class Player {
 
 		this.tickTimers(ms);
 
-		if (this.state !== 'stunned' && this.state !== 'attacking') {
-			this.move(dt, input, stage);
-		}
 		if (this.state !== 'stunned') {
+			this.move(dt, input, stage);
 			this.jump(input);
-			this.attack(input);
-			this.guard(input);
+			this.tryDash(input, stage);
 		}
-		this.applyGravity(dt, stage);
+
+		this.applyGravity(dt, stage, input);
 		this.clampBounds(stage);
 		this.animate(dt);
 		this.emitHud();
+		// 피격 원 위치 동기화 (플레이어 발 높이 추적)
+		if (this.hitCircle) {
+			this.hitCircle.position.x = this.group.position.x;
+			this.hitCircle.position.y = this.group.position.y + 0.05;
+			this.hitCircle.position.z = this.group.position.z;
+		}
+		// 머리 위 HUD 위치 동기화
+		if (this.headHud) {
+			const hudY = this.group.position.y + (this.parts.bodyTargetY + 1.2) * this.group.scale.x;
+			this.headHud.position.set(this.group.position.x, hudY, this.group.position.z);
+		}
 	}
 
-	/* ── timers ── */
+	// ── 타이머 ────────────────────────────────────────────────────────────────
 
 	private tickTimers(ms: number): void {
-		if (this.cooldownTimer > 0) this.cooldownTimer -= ms;
-		if (this.iFrameTimer > 0) {
-			this.iFrameTimer -= ms;
-			this.group.visible = Math.sin(this.iFrameTimer * 0.02) > 0;
-			if (this.iFrameTimer <= 0) this.group.visible = true;
-		}
 		if (this.stunTimer > 0) {
 			this.stunTimer -= ms;
 			if (this.stunTimer <= 0) this.state = 'idle';
 		}
-		if (this.state === 'attacking') {
-			this.attackTimer -= ms;
-			if (this.attackTimer <= 0) {
-				if (this.comboIndex >= 4) {
-					this.comboIndex = 0;
-					this.cooldownTimer = ATTACK_COOLDOWN_MS;
-					this.state = 'idle';
-				} else {
-					this.comboTimer = COMBO_WINDOW_MS;
-					this.state = 'idle';
-				}
-				this.activeAttack = -1;
+
+		// 대쉬 쿨타임 감소
+		if (this.dashCooldown > 0) {
+			this.dashCooldown = Math.max(0, this.dashCooldown - ms / 1000);
+			EventBus.emit('dash-update', {
+				cooldown: this.dashCooldown,
+				maxCooldown: this.dashCooldownMax
+			});
+			this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+		}
+
+		if (this.flashTimer > 0) {
+			this.flashTimer -= ms;
+			if (this.flashTimer <= 0) {
+				this.parts.accentMat.emissive.setHex(0x000000);
+				this.parts.accentMat.emissiveIntensity = 0;
 			}
 		}
-		if (this.comboTimer > 0) {
-			this.comboTimer -= ms;
-			if (this.comboTimer <= 0 && this.comboIndex > 0) this.comboIndex = 0;
+
+		// 피격 발광 (빨간 → 정상)
+		if (this.hitFlashTimer > 0) {
+			this.hitFlashTimer -= ms;
+			const t = Math.max(0, this.hitFlashTimer / 300);
+			this.group.traverse((obj) => {
+				if (!(obj instanceof THREE.Mesh)) return;
+				const mat = obj.material as THREE.MeshStandardMaterial;
+				if (mat?.isMeshStandardMaterial) {
+					mat.emissive.setRGB(t * 0.9, 0, 0);
+				}
+			});
+			if (this.hitFlashTimer <= 0) {
+				// emissive 자연 복구 (모델 자체 색상 유지됨)
+			}
+		}
+
+		// 티어업 하얀 플래시 (hitFlashTimer 음수 구간)
+		if (this.hitFlashTimer < 0) {
+			this.hitFlashTimer += ms;
+			const t = Math.min(1, Math.abs(this.hitFlashTimer) / 200);
+			this.group.traverse((obj) => {
+				if (!(obj instanceof THREE.Mesh)) return;
+				const mat = obj.material as THREE.MeshStandardMaterial;
+				if (mat?.isMeshStandardMaterial) {
+					mat.emissive.setRGB(t * 1.5, t * 1.5, t * 1.5);
+				}
+			});
+			if (this.hitFlashTimer >= 0) {
+				this.hitFlashTimer = 0;
+				// 머티리얼 emissive 정상화 (각 메시가 자체 emissiveIntensity 보유)
+				this.group.traverse((obj) => {
+					if (!(obj instanceof THREE.Mesh)) return;
+					const mat = obj.material as THREE.MeshStandardMaterial;
+					if (mat?.isMeshStandardMaterial) mat.emissiveIntensity = mat.emissiveIntensity; // no-op normalize
+				});
+			}
 		}
 	}
 
-	/* ── movement ── */
+	// ── 이동 ──────────────────────────────────────────────────────────────────
 
 	private move(dt: number, input: InputManager, stage: StageQuery): void {
-		if (this.state === 'guarding') return;
-
-		let dx = 0,
-			dz = 0;
-		if (input.isDown('KeyW') || input.isDown('ArrowUp')) dz = -1;
-		if (input.isDown('KeyS') || input.isDown('ArrowDown')) dz = 1;
-		if (input.isDown('KeyA') || input.isDown('ArrowLeft')) dx = -1;
+		let dx = 0, dz = 0;
+		if (input.isDown('KeyW') || input.isDown('ArrowUp'))    dz = -1;
+		if (input.isDown('KeyS') || input.isDown('ArrowDown'))  dz = 1;
+		if (input.isDown('KeyA') || input.isDown('ArrowLeft'))  dx = -1;
 		if (input.isDown('KeyD') || input.isDown('ArrowRight')) dx = 1;
 
-		if (dx !== 0 || dz !== 0) {
-			const dir = new THREE.Vector3(dx, 0, dz).normalize();
-			const spd = this.stats.speed * dt;
-			const fromX = this.group.position.x;
-			const fromZ = this.group.position.z;
+		const moving = dx !== 0 || dz !== 0;
+		const targetSpd = this.stats.speed * this.upgrades.moveSpeedMult;
+		const targetDir = moving ? new THREE.Vector3(dx, 0, dz).normalize() : new THREE.Vector3();
+		const targetVel = targetDir.clone().multiplyScalar(targetSpd);
+
+		// 스무스 가속/감속 (lerp)
+		const lerpAlpha = moving ? 0.20 : 0.14;
+		this.moveVelocity.lerp(targetVel, lerpAlpha);
+
+		if (this.moveVelocity.lengthSq() > 0.01) {
+			const from = this.group.position;
 			const resolved = stage.resolveMovement(
-				fromX,
-				fromZ,
-				fromX + dir.x * spd,
-				fromZ + dir.z * spd,
-				this.group.position.y
+				from.x, from.z,
+				from.x + this.moveVelocity.x * dt,
+				from.z + this.moveVelocity.z * dt,
+				from.y
 			);
 			this.group.position.x = resolved.x;
 			this.group.position.z = resolved.z;
-			this.facing.copy(dir);
-			this.group.lookAt(
-				this.group.position.x + dir.x,
-				this.group.position.y,
-				this.group.position.z + dir.z
-			);
+			const facing = this.moveVelocity.clone().setY(0).normalize();
+			this.facing.copy(facing);
+			this.group.lookAt(from.x - facing.x, from.y, from.z - facing.z);
 			if (this.state !== 'jumping') this.state = 'walking';
 		} else {
 			if (this.state === 'walking') this.state = 'idle';
 		}
+
+		// ── 대쉬 속도 적용 (감속하며 소멸) ────────────────────────────────────
+		if (this.dashVelocity.lengthSq() > 0.04) {
+			const spd = this.dashVelocity.length();
+			const newSpd = Math.max(0, spd - DASH_DECEL * dt);
+			if (newSpd > 0) {
+				this.dashVelocity.normalize().multiplyScalar(newSpd);
+			} else {
+				this.dashVelocity.set(0, 0, 0);
+			}
+			const from = this.group.position;
+			const resolved = stage.resolveMovement(
+				from.x, from.z,
+				from.x + this.dashVelocity.x * dt,
+				from.z + this.dashVelocity.z * dt,
+				from.y
+			);
+			this.group.position.x = resolved.x;
+			this.group.position.z = resolved.z;
+		}
 	}
 
-	/* ── jump ── */
+	// ── 대쉬 ──────────────────────────────────────────────────────────────────
+
+	private tryDash(input: InputManager, _stage: StageQuery): void {
+		if (this.dashCooldown > 0 || this.state === 'dead') return;
+		if (!input.justDown('ShiftLeft') && !input.justDown('ShiftRight')) return;
+
+		// 대쉬 방향: 이동 방향 우선, 없으면 바라보는 방향
+		let dir = this.moveVelocity.clone().setY(0);
+		if (dir.lengthSq() < 0.1) dir = this.facing.clone();
+		if (dir.lengthSq() < 0.01) return;
+		dir.normalize();
+
+		// 속도 벡터 설정 — move()에서 매 프레임 감속 적용하며 실제 이동
+		this.dashVelocity.copy(dir).multiplyScalar(DASH_SPEED);
+
+		this.dashCooldownMax = DASH_COOLDOWN * this.upgrades.dashCooldownMult;
+		this.dashCooldown = this.dashCooldownMax;
+		this.hitFlashTimer = -130;
+		EventBus.emit('dash-update', { cooldown: this.dashCooldown, maxCooldown: this.dashCooldownMax });
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+	}
+
+	// ── 점프 ──────────────────────────────────────────────────────────────────
 
 	private jump(input: InputManager): void {
-		const jp = input.justDown('KeyC') || input.justDown('Space');
-		if (jp && this.isOnGround) {
+		const wantJump = input.justDown('KeyC') || input.justDown('Space');
+		if (!wantJump) return;
+		if (this.isGliding) this.endGlide();
+
+		if (this.isOnGround) {
 			this.velocityY = JUMP_FORCE;
 			this.isOnGround = false;
+			this.state = 'jumping';
+			this.jumpsUsed = 1;
+			return;
+		}
+		if (this.currentLevel >= DOUBLE_JUMP_MIN_LEVEL && this.jumpsUsed === 1) {
+			this.velocityY = JUMP_FORCE * DOUBLE_JUMP_FORCE_MULT;
+			this.jumpsUsed = 2;
 			this.state = 'jumping';
 		}
 	}
 
-	/* ── attack ── */
-
-	private attack(input: InputManager): void {
-		if (this.state === 'guarding' || this.cooldownTimer > 0) return;
-		if (!input.justDown('KeyV')) return;
-		if (this.state === 'attacking') return;
-
-		if (this.comboTimer > 0 || this.comboIndex === 0) {
-			this.activeAttack = this.comboIndex;
-			this.attackTimer = ATTACK_DURATIONS_MS[this.activeAttack];
-			this.comboIndex++;
-			this.comboTimer = 0;
-			this.state = 'attacking';
-			this.flashAttack();
-			this.spawnAttackEffect();
-		}
+	private endGlide(): void {
+		this.isGliding = false;
+		this.glideRemainingMs = 0;
+		this.glideHoldMs = 0;
 	}
 
-	private flashAttack(): void {
-		const color = this.transformState === 'transformed' ? 0xff8800 : 0x2266cc;
-		this.parts.accentMat.emissive.setHex(color);
-		this.parts.accentMat.emissiveIntensity = 1.0;
-		this.flashActive = true;
-		setTimeout(() => {
-			if (!this.flashActive) return;
-			this.flashActive = false;
-			if (this.transformState !== 'transformed') {
-				this.parts.accentMat.emissive.setHex(0x000000);
-				this.parts.accentMat.emissiveIntensity = 0;
+	private tryStartGlide(input: InputManager, dt: number): void {
+		if (this.currentForm < WING_GLIDE_MIN_FORM || this.jumpsUsed < 2 || this.isOnGround) {
+			this.glideHoldMs = 0;
+			return;
+		}
+		const holdKey = input.isDown('Space') || input.isDown('KeyC');
+		if (holdKey) {
+			this.glideHoldMs += dt * 1000;
+			if (this.glideHoldMs >= GLIDE_HOLD_TO_START_MS) {
+				this.isGliding = true;
+				this.glideAnchorY = this.group.position.y;
+				this.glideRemainingMs = GLIDE_MAX_DURATION_MS;
+				this.glideHoldMs = 0;
+				this.velocityY = 0;
 			}
-		}, 220);
-	}
-
-	private spawnAttackEffect(): void {
-		if (this.attackEffectGroup) {
-			this.group.remove(this.attackEffectGroup);
-		}
-
-		const color = this.transformState === 'transformed' ? 0xffcc00 : 0x66bbff;
-		this.attackEffectMaxLife = ATTACK_DURATIONS_MS[this.activeAttack] || 250;
-		this.attackEffectLife = 0;
-
-		const effGroup = new THREE.Group();
-
-		// Ground range ring
-		const ringGeo = new THREE.RingGeometry(MELEE_RANGE * 0.88, MELEE_RANGE, 32);
-		const ringMat = new THREE.MeshBasicMaterial({
-			color,
-			transparent: true,
-			opacity: 0.25,
-			side: THREE.DoubleSide,
-			depthWrite: false
-		});
-		this.attackRingMesh = new THREE.Mesh(ringGeo, ringMat);
-		this.attackRingMesh.rotation.x = -Math.PI / 2;
-		this.attackRingMesh.position.y = 0.04;
-		effGroup.add(this.attackRingMesh);
-
-		// Sweep planes group (direct refs stored for perf)
-		const sweepGroup = new THREE.Group();
-		sweepGroup.rotation.y = -0.8;
-		this.attackSweepMeshes = [];
-		const fanAngles = [-0.5, -0.25, 0, 0.25, 0.5];
-		for (const angle of fanAngles) {
-			const geo = new THREE.PlaneGeometry(0.24, 2.5);
-			const mat = new THREE.MeshBasicMaterial({
-				color,
-				transparent: true,
-				opacity: 0.6,
-				side: THREE.DoubleSide,
-				depthWrite: false
-			});
-			const plane = new THREE.Mesh(geo, mat);
-			plane.position.set(
-				Math.sin(angle) * MELEE_RANGE * 0.5,
-				1.25,
-				-Math.cos(angle) * MELEE_RANGE * 0.5
-			);
-			plane.rotation.y = angle;
-			sweepGroup.add(plane);
-			this.attackSweepMeshes.push(plane);
-		}
-
-		effGroup.add(sweepGroup);
-		this.attackSweepGroup = sweepGroup;
-		this.attackEffectGroup = effGroup;
-		this.group.add(effGroup);
-	}
-
-	isAttackHitFrame(): boolean {
-		if (this.state !== 'attacking' || this.activeAttack < 0) return false;
-		const elapsed = ATTACK_DURATIONS_MS[this.activeAttack] - this.attackTimer;
-		return elapsed > 60 && elapsed < 180;
-	}
-
-	/* ── guard ── */
-
-	private guard(input: InputManager): void {
-		if (this.state === 'attacking') return;
-		if (input.isDown('KeyX')) {
-			this.state = 'guarding';
-		} else if (this.state === 'guarding') {
-			this.state = 'idle';
+		} else {
+			this.glideHoldMs = 0;
 		}
 	}
 
-	/* ── damage ── */
+	// ── 중력 ──────────────────────────────────────────────────────────────────
 
-	takeDamage(amount: number, knockDir?: THREE.Vector3): boolean {
-		if (this.iFrameTimer > 0 || this.state === 'dead') return false;
-		this.stats.hp = Math.max(0, this.stats.hp - amount);
-		this.iFrameTimer = IFRAME_MS;
+	private applyGravity(dt: number, stage: StageQuery, input: InputManager): void {
+		const gyProbe = this.group.position.y + 2;
 
-		if (this.state !== 'guarding' && knockDir) {
-			this.group.position.addScaledVector(knockDir, 1.2);
-			this.state = 'stunned';
-			this.stunTimer = STUN_MS;
-			this.comboIndex = 0;
-			this.activeAttack = -1;
+		if (this.isGliding) {
+			const spaceHeld = input.isDown('Space') || input.isDown('KeyC');
+			if (!spaceHeld || this.glideRemainingMs <= 0) {
+				this.endGlide();
+			} else {
+				this.glideRemainingMs -= dt * 1000;
+				this.velocityY = 0;
+				const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, gyProbe);
+				this.group.position.y = Math.max(this.glideAnchorY, gy);
+				if (this.group.position.y <= gy + 0.02) {
+					this.endGlide();
+					this.group.position.y = gy;
+					this.velocityY = 0;
+					this.isOnGround = true;
+					this.jumpsUsed = 0;
+					if (this.state === 'jumping') this.state = 'idle';
+				}
+				return;
+			}
 		}
-		if (this.stats.hp <= 0) {
-			this.state = 'dead';
-			EventBus.emit('game-over');
+
+		if (!this.isOnGround && !this.isGliding) {
+			this.tryStartGlide(input, dt);
 		}
-		return true;
-	}
 
-	/* ── physics ── */
-
-	private applyGravity(dt: number, stage: StageQuery): void {
-		if (!this.isOnGround) this.velocityY += GRAVITY * dt;
+		if (!this.isOnGround && !this.isGliding) this.velocityY += GRAVITY * dt;
 		this.group.position.y += this.velocityY * dt;
 
-		const gy = stage.getGroundHeight(
-			this.group.position.x,
-			this.group.position.z,
-			this.group.position.y + 2
-		);
+		const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, gyProbe);
 		if (this.group.position.y <= gy) {
 			this.group.position.y = gy;
 			this.velocityY = 0;
 			if (!this.isOnGround) {
 				this.isOnGround = true;
+				this.jumpsUsed = 0;
+				this.glideHoldMs = 0;
 				if (this.state === 'jumping') this.state = 'idle';
 			}
 		} else {
@@ -316,120 +548,110 @@ export class Player {
 		this.group.position.z = Math.max(b.minZ, Math.min(b.maxZ, this.group.position.z));
 	}
 
-	/* ── animation ── */
+	// ── 애니메이션 ────────────────────────────────────────────────────────────
 
 	private animate(dt: number): void {
 		const p = this.parts;
 
-		if (this.state === 'walking') {
-			this.walkCycle += dt * 10;
+		if (this.isGliding && this.currentForm >= WING_GLIDE_MIN_FORM) {
+			this.walkCycle += dt * 3.5;
+			const hover = Math.sin(this.walkCycle) * 0.04;
+			p.body.position.y += ((p.bodyTargetY + 0.10 + hover) - p.body.position.y) * 0.25;
+			p.leftArm.rotation.x  += (-0.25 - p.leftArm.rotation.x)  * 0.18;
+			p.rightArm.rotation.x += (-0.25 - p.rightArm.rotation.x) * 0.18;
+			p.leftArm.rotation.z  += (-1.0  - p.leftArm.rotation.z)  * 0.18;
+			p.rightArm.rotation.z += ( 1.0  - p.rightArm.rotation.z) * 0.18;
+			p.leftLeg.rotation.x  += (0.55 - p.leftLeg.rotation.x)  * 0.18;
+			p.rightLeg.rotation.x += (0.55 - p.rightLeg.rotation.x) * 0.18;
+			p.leftLeg.rotation.z  += (0.08 - p.leftLeg.rotation.z)  * 0.18;
+			p.rightLeg.rotation.z += (-0.08 - p.rightLeg.rotation.z) * 0.18;
+		} else if (this.state === 'walking') {
+			const cycleSpeed = 10;
+			this.walkCycle += dt * cycleSpeed;
 			const s = Math.sin(this.walkCycle);
-			// FIXED: negated signs so legs step forward (same as movement dir)
-			p.leftLeg.rotation.x = -s * 0.5;
-			p.rightLeg.rotation.x = s * 0.5;
-			p.leftArm.rotation.x = s * 0.35;
+			p.leftLeg.rotation.x  = -s * 0.5;
+			p.rightLeg.rotation.x =  s * 0.5;
+			p.leftArm.rotation.x  =  s * 0.35;
 			p.rightArm.rotation.x = -s * 0.35;
-		} else if (this.state === 'attacking' && this.activeAttack >= 0) {
-			const dur = ATTACK_DURATIONS_MS[this.activeAttack];
-			const prog = 1 - this.attackTimer / dur;
-			const swing = Math.sin(prog * Math.PI);
-			p.leftLeg.rotation.x = 0;
-			p.rightLeg.rotation.x = 0;
-			// FIXED: positive rotation → hand swings forward toward enemy
-			if (this.activeAttack === 0) {
-				p.rightArm.rotation.x = swing * 1.6;
-				p.leftArm.rotation.x = 0;
-			} else if (this.activeAttack === 1) {
-				p.leftArm.rotation.x = swing * 1.6;
-				p.rightArm.rotation.x = 0;
-			} else if (this.activeAttack === 2) {
-				p.rightArm.rotation.x = swing * 1.8;
-				p.leftArm.rotation.x = swing * 1.8;
-			} else {
-				// Combo finisher: wide upward arc
-				p.rightArm.rotation.x = swing * 2.0;
-				p.leftArm.rotation.x = swing * 2.0;
-				p.body.position.y = 1.0 * MODEL_SCALE + swing * 0.3;
-			}
-		} else if (this.state === 'guarding') {
-			p.leftArm.rotation.x = 1.2;
-			p.rightArm.rotation.x = 1.2;
-			p.leftLeg.rotation.x = 0;
-			p.rightLeg.rotation.x = 0;
+			p.leftArm.rotation.z  += (0 - p.leftArm.rotation.z)  * 0.15;
+			p.rightArm.rotation.z += (0 - p.rightArm.rotation.z) * 0.15;
+			p.leftLeg.rotation.z  += (0 - p.leftLeg.rotation.z)  * 0.15;
+			p.rightLeg.rotation.z += (0 - p.rightLeg.rotation.z) * 0.15;
+		} else if (this.state === 'jumping') {
+			p.leftLeg.rotation.x  += (-0.4 - p.leftLeg.rotation.x)  * 0.15;
+			p.rightLeg.rotation.x += (-0.4 - p.rightLeg.rotation.x) * 0.15;
+			p.leftArm.rotation.x  += (0.5 - p.leftArm.rotation.x)   * 0.15;
+			p.rightArm.rotation.x += (0.5 - p.rightArm.rotation.x)  * 0.15;
 		} else {
-			p.leftArm.rotation.x *= 0.85;
-			p.rightArm.rotation.x *= 0.85;
-			p.leftLeg.rotation.x *= 0.85;
-			p.rightLeg.rotation.x *= 0.85;
-			p.body.position.y += (1.0 * MODEL_SCALE - p.body.position.y) * 0.15;
-		}
+			// ── 총 발사 포즈 ──────────────────────────────────────────────────
+			if (this.flashTimer > 0) {
+				// 발사 순간 (~140ms): 오른팔을 앞으로 완전히 뻗어 총 발사 포즈
+				const phase = this.flashTimer / 140; // 1 → 0
+				const stretch = phase > 0.55 ? 1.0 : (phase / 0.55); // 빠르게 뻗기 → 천천히 복귀
 
-		// Animate attack effect (direct refs, no traverse)
-		if (this.attackEffectGroup) {
-			this.attackEffectLife += dt * 1000;
-			const t = Math.min(1, this.attackEffectLife / this.attackEffectMaxLife);
-
-			if (this.attackSweepGroup) {
-				this.attackSweepGroup.rotation.y = -0.8 + t * 1.6;
-			}
-
-			const fade = Math.max(0, 1 - t * 1.4);
-			const sweepOpacity = fade * 0.6;
-			const ringOpacity = fade * 0.25;
-
-			for (const m of this.attackSweepMeshes) {
-				(m.material as THREE.MeshBasicMaterial).opacity = sweepOpacity;
-			}
-			if (this.attackRingMesh) {
-				(this.attackRingMesh.material as THREE.MeshBasicMaterial).opacity = ringOpacity;
-			}
-
-			if (t >= 1) {
-				this.group.remove(this.attackEffectGroup);
-				this.attackEffectGroup = null;
-				this.attackSweepGroup = null;
-				this.attackRingMesh = null;
-				this.attackSweepMeshes = [];
+				p.rightArm.rotation.x += (1.65 * stretch - p.rightArm.rotation.x) * 0.65;
+				p.leftArm.rotation.x  += (0.7  * stretch - p.leftArm.rotation.x)  * 0.50;
+				p.rightArm.rotation.z += (-0.15 * stretch - p.rightArm.rotation.z) * 0.50;
+				p.leftArm.rotation.z  += (0.15  * stretch - p.leftArm.rotation.z)  * 0.50;
+			p.body.position.y += ((p.bodyTargetY - 0.06 * stretch) - p.body.position.y) * 0.4;
+				// 다리는 발사 자세 (약간 벌림)
+				p.leftLeg.rotation.x  += (0.15 * stretch - p.leftLeg.rotation.x)  * 0.35;
+				p.rightLeg.rotation.x += (-0.1 * stretch - p.rightLeg.rotation.x) * 0.35;
+			} else {
+				// 대기 포즈로 부드럽게 복귀
+				p.leftArm.rotation.x  += (0 - p.leftArm.rotation.x)  * 0.22;
+				p.rightArm.rotation.x += (0 - p.rightArm.rotation.x) * 0.22;
+				p.leftArm.rotation.z  += (0 - p.leftArm.rotation.z)  * 0.22;
+				p.rightArm.rotation.z += (0 - p.rightArm.rotation.z) * 0.22;
+				p.leftLeg.rotation.x  *= 0.80;
+				p.rightLeg.rotation.x *= 0.80;
 			}
 		}
+
+		p.body.position.y += (p.bodyTargetY - p.body.position.y) * 0.18;
 	}
 
-	/* ── transform ── */
-
-	setTransformed(on: boolean): void {
-		this.transformState = on ? 'transformed' : 'normal';
-		this.flashActive = false;
-
-		// Clear attack effect refs before clearing group children
-		this.attackEffectGroup = null;
-		this.attackSweepGroup = null;
-		this.attackRingMesh = null;
-		this.attackSweepMeshes = [];
-
-		while (this.group.children.length > 0) {
-			this.group.remove(this.group.children[0]);
-		}
-
-		const { group: newGroup, parts } = on
-			? createTransformedMechModel()
-			: createMechModel(0x3366ff, 0x5588ff, MODEL_SCALE);
-
-		const children = [...newGroup.children];
-		for (const child of children) {
-			this.group.add(child);
-		}
-		this.parts = parts;
-
-		EventBus.emit('transform-state-change', { state: this.transformState });
-	}
-
-	/* ── hud ── */
+	// ── HUD ──────────────────────────────────────────────────────────────────
 
 	private emitHud(): void {
 		EventBus.emit('hp-update', { hp: this.stats.hp, maxHp: this.stats.maxHp });
-		EventBus.emit('gauge-update', {
-			gauge: this.stats.transformGauge,
-			maxGauge: this.stats.maxTransformGauge
-		});
+	}
+
+	dispose(): void {
+		this.scene.remove(this.group);
+		if (this.hitCircle) this.scene.remove(this.hitCircle);
+		if (this.headHud) this.scene.remove(this.headHud);
+	}
+
+	reset(pos: THREE.Vector3, stats: MechStats): void {
+		this.stats = { ...stats };
+		this.state = 'idle';
+		this.velocityY = 0;
+		this.isOnGround = true;
+		this.jumpsUsed = 0;
+		this.glideHoldMs = 0;
+		this.isGliding = false;
+		this.glideRemainingMs = 0;
+		this.stunTimer = 0;
+		this.flashTimer = 0;
+		this.hitFlashTimer = 0;
+		this.currentForm = -1;
+		this.currentLevel = 1;
+		this.moveVelocity.set(0, 0, 0);
+		if (this.hitCircle) this.scene.remove(this.hitCircle);
+		if (this.headHud) this.scene.remove(this.headHud);
+		this.rebuildModel(0);
+		this.group.position.copy(pos);
+		this.group.scale.setScalar(scaleForLevel(1));
+		this.createHitCircle(this.scene, pos);
+		this.createHeadHud(this.scene, pos);
+		this.upgrades = {
+			missileDamage: 8, missileSpeed: 14, fireRateMs: 1500,
+			missileCount: 1, piercingCount: 0, isHoming: false,
+			isExplosive: false, explosionRadius: 3.0, missileScale: 1.0,
+			spreadShot: false, collectRange: 1.8, magnetRange: 5.0,
+			moveSpeedMult: 1.0, maxHpMult: 1.0, pendingHealPct: 0,
+			dashCooldownMult: 1.0
+		};
 	}
 }

@@ -17,7 +17,7 @@ export class DamageNumbers {
 	private entries: Entry[] = [];
 
 	private listener = (...args: unknown[]): void => {
-		const d = args[0] as { pos: THREE.Vector3; amount: number; type: 'deal' | 'take' | 'heal' };
+		const d = args[0] as { pos: THREE.Vector3; amount: number; type: 'deal' | 'take' | 'heal' | 'crit' };
 		this.spawn(d.pos, d.amount, d.type);
 	};
 
@@ -33,16 +33,17 @@ export class DamageNumbers {
 		EventBus.on('damage-number', this.listener);
 	}
 
-	private spawn(worldPos: THREE.Vector3, amount: number, type: 'deal' | 'take' | 'heal'): void {
+	private spawn(worldPos: THREE.Vector3, amount: number, type: 'deal' | 'take' | 'heal' | 'crit'): void {
 		const el = document.createElement('span');
 		const isHeal = type === 'heal';
+		const isCrit = type === 'crit';
 		const isDeal = type === 'deal';
 
-		el.textContent = isHeal ? `+${amount}` : `${amount}`;
+		el.textContent = isHeal ? `+${amount}` : isCrit ? `★${amount}` : `${amount}`;
 
-		const color = isHeal ? '#44ff88' : isDeal ? '#ffe066' : '#ff4444';
-		const glow = isHeal ? '#22aa55' : isDeal ? '#ffaa00' : '#ff0000';
-		const size = isDeal ? '1rem' : '1.4rem';
+		const color = isHeal ? '#44ff88' : isCrit ? '#ff8800' : isDeal ? '#ffe066' : '#ff4444';
+		const glow  = isHeal ? '#22aa55' : isCrit ? '#ffaa00' : isDeal ? '#ffaa00' : '#ff0000';
+		const size  = isCrit ? '1.6rem' : isDeal ? '1rem' : '1.4rem';
 
 		el.style.cssText = [
 			'position:absolute',

@@ -1,138 +1,784 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { EventBus } from '$lib/game/bridge/EventBus';
+	import {
+		getUpgradePickInfo,
+		rarityGradePoints,
+		type UpgradeCardInfo
+	} from '$lib/game/systems/UpgradeSystem';
+	import { computeRunScore } from '$lib/game/constants/GameConfig';
 
-	let hp = $state(150);
-	let maxHp = $state(150);
-	let gauge = $state(0);
-	let maxGauge = $state(100);
-	let alive = $state(0);
-	let wave = $state(1);
-	let gameOver = $state(false);
-	let bossAlert = $state(false);
+	// ── 미니맵 ──────────────────────────────────────────────────────────────────
+	let minimapCanvas: HTMLCanvasElement | undefined = $state(undefined);
+	const MMAP_SIZE = 160;
+
+	// ── 캐릭터 진화 프리뷰 ──────────────────────────────────────────────────────
+	let evoCanvas: HTMLCanvasElement | undefined = $state(undefined);
+
+	/** form(0~8)에 따른 2D 실루엣을 캔버스에 그림 */
+	function drawEvoPreview(form: number): void {
+		if (!evoCanvas) return;
+		const ctx = evoCanvas.getContext('2d');
+		if (!ctx) return;
+		const W = 80, H = 110;
+		ctx.clearRect(0, 0, W, H);
+
+		// 배경 (테두리는 .evo-wrap CSS만 사용 — 캔버스 이중 테두리 제거)
+		ctx.fillStyle = 'rgba(0,10,25,0.88)';
+		ctx.fillRect(0, 0, W, H);
+
+		// form별 색상 (진화할수록 더 화려)
+		const bodyColors   = ['#666','#5577aa','#1155cc','#0044dd','#0033cc','#001aaa','#bb5500','#cc2200','#991100'];
+		const accentColors = ['#999','#88aacc','#22aaff','#2299ff','#00bbff','#00ccff','#ffbb00','#ff7700','#ff2200'];
+		const eyeColors    = ['#ff4444','#ff6644','#33aaff','#3399ff','#00ccff','#00eeff','#ffee00','#ff8800','#ff2200'];
+		const glowColors   = ['none','none','#1155cc','#0044dd','#0033cc','#001aaa','#bb5500','#cc2200','#991100'];
+		const bc = bodyColors[Math.min(form, 8)];
+		const ac = accentColors[Math.min(form, 8)];
+		const ec = eyeColors[Math.min(form, 8)];
+
+		const cx = W / 2;
+		const groundY = H - 6;
+
+		// ── 앞모습 (front-facing) 캐릭터 ────────────────────────────────────────
+		// form 0: 단순 직육면체만
+		// form 1: + 머리(구형 헬멧)
+		// form 2: + 팔
+		// form 3: + 다리
+		// form 4: + 어깨 패드
+		// form 5: + 흉갑 + 바이저 글로우
+		// form 6: + V핀 + 디테일
+		// form 7: + 날개
+		// form 8: + 숄더 캐논 + 풀 장갑
+
+		// 기본 크기 (form에 따라 점점 비례 증가)
+		const scale = 0.55 + form * 0.055;
+		const bw = Math.round(20 * scale); // 몸통 너비 절반
+		const bh = Math.round(26 * scale); // 몸통 높이
+		const hw = Math.round(12 * scale); // 머리 너비 절반
+		const hh = Math.round(12 * scale); // 머리 높이
+		const lw = Math.round(7  * scale); // 다리 너비
+		const lh = Math.round(20 * scale); // 다리 높이
+		const aw = Math.round(9  * scale); // 팔 너비
+		const ah = Math.round(18 * scale); // 팔 높이
+
+		const bodyTop = groundY - lh - bh;
+		const headTop = bodyTop - hh - 2;
+
+		// 글로우 효과 (form 5+)
+		if (form >= 5 && glowColors[form] !== 'none') {
+			ctx.shadowColor = ac;
+			ctx.shadowBlur  = 8 + form * 1.5;
+		}
+
+		// 다리 (form 3+)
+		if (form >= 3) {
+			ctx.fillStyle = bc;
+			ctx.fillRect(cx - bw * 0.5 - 1, groundY - lh, lw, lh);
+			ctx.fillRect(cx + bw * 0.5 + 1 - lw, groundY - lh, lw, lh);
+			// 발 (form 5+)
+			if (form >= 5) {
+				ctx.fillStyle = ac;
+				ctx.fillRect(cx - bw * 0.5 - 2, groundY - 5, lw + 3, 5);
+				ctx.fillRect(cx + bw * 0.5 - lw - 1, groundY - 5, lw + 3, 5);
+			}
+		} else {
+			// form 0~2: 바닥 받침
+			ctx.fillStyle = bc;
+			ctx.fillRect(cx - 10, groundY - 8, 20, 8);
+		}
+
+		// 팔 (form 2+)
+		if (form >= 2) {
+			ctx.fillStyle = bc;
+			const armTop = bodyTop + Math.round(4 * scale);
+			ctx.fillRect(cx - bw - aw - 2, armTop, aw, ah);
+			ctx.fillRect(cx + bw + 2,      armTop, aw, ah);
+			// 손 (form 4+)
+			if (form >= 4) {
+				ctx.fillStyle = ac;
+				ctx.fillRect(cx - bw - aw - 2, armTop + ah, aw, Math.round(5 * scale));
+				ctx.fillRect(cx + bw + 2,      armTop + ah, aw, Math.round(5 * scale));
+			}
+		}
+
+		// 어깨 패드 (form 4+)
+		if (form >= 4) {
+			ctx.fillStyle = ac;
+			const spw = Math.round(14 * scale);
+			const sph = Math.round(8  * scale);
+			ctx.fillRect(cx - bw - aw - 2,      bodyTop, spw, sph);
+			ctx.fillRect(cx + bw - spw + aw + 2, bodyTop, spw, sph);
+		}
+
+		// 몸통
+		ctx.fillStyle = bc;
+		ctx.fillRect(cx - bw, bodyTop, bw * 2, bh);
+		// 흉갑 (form 5+)
+		if (form >= 5) {
+			ctx.fillStyle = ac;
+			const cpw = Math.round(bw * 1.0);
+			const cph = Math.round(bh * 0.55);
+			ctx.fillRect(cx - cpw / 2, bodyTop + 2, cpw, cph);
+			// 코어 발광
+			ctx.fillStyle = ec;
+			ctx.shadowColor = ec;
+			ctx.shadowBlur = 6;
+			ctx.fillRect(cx - 4, bodyTop + Math.round(cph * 0.4), 8, 7);
+			ctx.shadowBlur = form >= 5 ? 8 + form * 1.5 : 0;
+			ctx.shadowColor = ac;
+		}
+
+		// 머리 (form 1+)
+		if (form >= 1) {
+			ctx.fillStyle = bc;
+			ctx.fillRect(cx - hw, headTop, hw * 2, hh);
+			// 바이저 (form 3+)
+			if (form >= 3) {
+				ctx.fillStyle = ec;
+				ctx.shadowColor = ec;
+				ctx.shadowBlur = 5;
+				ctx.fillRect(cx - Math.round(hw * 0.7), headTop + Math.round(hh * 0.3), Math.round(hw * 1.4), Math.round(hh * 0.35));
+				ctx.shadowBlur = form >= 5 ? 8 + form * 1.5 : 0;
+				ctx.shadowColor = ac;
+			}
+			// V핀 (form 6+)
+			if (form >= 6) {
+				ctx.fillStyle = '#ffdd00';
+				ctx.shadowColor = '#ffdd00'; ctx.shadowBlur = 6;
+				ctx.beginPath();
+				ctx.moveTo(cx,      headTop - Math.round(12 * scale));
+				ctx.lineTo(cx - 5, headTop);
+				ctx.lineTo(cx + 5, headTop);
+				ctx.closePath(); ctx.fill();
+				ctx.shadowColor = ac; ctx.shadowBlur = form >= 5 ? 8 + form * 1.5 : 0;
+			}
+			// 안테나 (form 2~5)
+			if (form >= 2 && form < 6) {
+				ctx.fillStyle = ac;
+				ctx.fillRect(cx - 1, headTop - Math.round(8 * scale), 2, Math.round(8 * scale));
+			}
+		} else {
+			// form 0: 눈만 표시
+			ctx.fillStyle = '#ff4444';
+			ctx.shadowColor = '#ff4444'; ctx.shadowBlur = 4;
+			ctx.fillRect(cx - 6, bodyTop + 4, 5, 4);
+			ctx.fillRect(cx + 1, bodyTop + 4, 5, 4);
+			ctx.shadowBlur = 0;
+		}
+
+		// 날개 (form 7+)
+		if (form >= 7) {
+			ctx.fillStyle = ac;
+			ctx.globalAlpha = 0.85;
+			ctx.shadowColor = ac; ctx.shadowBlur = 10;
+			// 왼쪽 날개
+			ctx.beginPath();
+			ctx.moveTo(cx - bw,        bodyTop + 4);
+			ctx.lineTo(cx - bw - aw * 3, bodyTop + Math.round(bh * 0.3));
+			ctx.lineTo(cx - bw,        bodyTop + Math.round(bh * 0.6));
+			ctx.closePath(); ctx.fill();
+			// 오른쪽 날개
+			ctx.beginPath();
+			ctx.moveTo(cx + bw,        bodyTop + 4);
+			ctx.lineTo(cx + bw + aw * 3, bodyTop + Math.round(bh * 0.3));
+			ctx.lineTo(cx + bw,        bodyTop + Math.round(bh * 0.6));
+			ctx.closePath(); ctx.fill();
+			ctx.globalAlpha = 1.0;
+			ctx.shadowBlur = 8 + form * 1.5;
+			ctx.shadowColor = ac;
+		}
+
+		// 숄더 캐논 (form 8)
+		if (form >= 8) {
+			ctx.fillStyle = '#222';
+			ctx.fillRect(cx - bw - aw - 14, bodyTop - 4, 14, 7);
+			ctx.fillRect(cx + bw + aw,      bodyTop - 4, 14, 7);
+			ctx.fillStyle = ec;
+			ctx.shadowColor = ec; ctx.shadowBlur = 8;
+			ctx.fillRect(cx - bw - aw - 22, bodyTop - 2, 10, 4);
+			ctx.fillRect(cx + bw + aw + 12, bodyTop - 2, 10, 4);
+		}
+
+		ctx.shadowBlur = 0;
+	}
+
+	interface MinimapData {
+		player: { x: number; z: number; fx: number; fz: number };
+		monsters: { x: number; z: number; isBoss: boolean }[];
+		bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+		viewport: { x: number; z: number; halfW: number; halfD: number };
+		loot?: { kind: 'health' | 'card'; x: number; z: number }[];
+	}
+
+	function drawMinimap(data: MinimapData): void {
+		if (!minimapCanvas) return;
+		const ctx = minimapCanvas.getContext('2d');
+		if (!ctx) return;
+
+		const { bounds, player, monsters, viewport, loot = [] } = data;
+		const mapW = bounds.maxX - bounds.minX;
+		const mapD = bounds.maxZ - bounds.minZ;
+		const scaleX = MMAP_SIZE / mapW;
+		const scaleZ = MMAP_SIZE / mapD;
+
+		const wx = (wx: number) => (wx - bounds.minX) * scaleX;
+		const wz = (wz: number) => (wz - bounds.minZ) * scaleZ;
+
+		// 배경
+		ctx.fillStyle = 'rgba(10, 12, 20, 0.88)';
+		ctx.fillRect(0, 0, MMAP_SIZE, MMAP_SIZE);
+
+		// 뷰포트 직사각형
+		const vx0 = wx(viewport.x - viewport.halfW);
+		const vz0 = wz(viewport.z - viewport.halfD);
+		const vw  = viewport.halfW * 2 * scaleX;
+		const vd  = viewport.halfD * 2 * scaleZ;
+		ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+		ctx.lineWidth = 1;
+		ctx.strokeRect(vx0, vz0, vw, vd);
+
+		// 맵 아이템 (체력 포션 / 카드 보급)
+		for (const L of loot) {
+			const lx = wx(L.x);
+			const lz = wz(L.z);
+			if (L.kind === 'health') {
+				ctx.beginPath();
+				ctx.arc(lx, lz, 2.4, 0, Math.PI * 2);
+				ctx.fillStyle = '#33ff99';
+				ctx.fill();
+				ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+				ctx.lineWidth = 0.6;
+				ctx.stroke();
+			} else {
+				ctx.fillStyle = '#aa66ff';
+				ctx.fillRect(lx - 2.5, lz - 2.5, 5, 5);
+				ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+				ctx.lineWidth = 0.6;
+				ctx.strokeRect(lx - 2.5, lz - 2.5, 5, 5);
+			}
+		}
+
+		// 적 (빨간 점)
+		for (const m of monsters) {
+			const mx = wx(m.x), mz = wz(m.z);
+			ctx.beginPath();
+			ctx.arc(mx, mz, m.isBoss ? 4 : 2.5, 0, Math.PI * 2);
+			ctx.fillStyle = m.isBoss ? '#ff4400' : '#ff2222';
+			ctx.fill();
+		}
+
+		// 플레이어 (밝은 삼각형 방향 표시)
+		const px = wx(player.x), pz = wz(player.z);
+		const angle = Math.atan2(player.fx, -player.fz);
+		ctx.save();
+		ctx.translate(px, pz);
+		ctx.rotate(angle);
+		ctx.beginPath();
+		ctx.moveTo(0, -5);
+		ctx.lineTo(3.5, 4);
+		ctx.lineTo(-3.5, 4);
+		ctx.closePath();
+		ctx.fillStyle = '#00eeff';
+		ctx.fill();
+		ctx.restore();
+
+		// 테두리
+		ctx.strokeStyle = 'rgba(0, 200, 255, 0.4)';
+		ctx.lineWidth = 1.5;
+		ctx.strokeRect(0, 0, MMAP_SIZE, MMAP_SIZE);
+	}
+
+	// ── 기본 스탯 ───────────────────────────────────────────────────────────────
+	let hp     = $state(150);
+	let maxHp  = $state(150);
+
+	/** 획득 카드(id별) — 표시 레벨 = 동일 id 선택 시 등급 점수(커먼1/레어2/에픽3) 합 */
+	type PickedEntry = { emoji: string; name: string; points: number };
+	let pickedById = $state<Record<string, PickedEntry>>({});
+	const pickedRows = $derived(
+		Object.entries(pickedById)
+			.map(([id, v]) => ({ id, emoji: v.emoji, name: v.name, points: v.points }))
+			.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
+	);
+
+	// ── 생존 시간 ────────────────────────────────────────────────────────────────
+	let survivalSeconds = $state(0);
+	const timeDisplay = $derived(
+		`${String(Math.floor(survivalSeconds / 60)).padStart(2, '0')}:${String(Math.floor(survivalSeconds % 60)).padStart(2, '0')}`
+	);
+
+	type BossKillKey = 'bear' | 'wolf' | 'dragon' | 'tiger' | 'ironlord';
+	type GameOverDetail = {
+		survivalTime: number;
+		level: number;
+		normalKills: number;
+		bosses: Record<BossKillKey, number>;
+		scoreTotal: number;
+		scoreBoss: number;
+		scoreLevel: number;
+		scoreTime: number;
+		waveBossCount: number;
+	};
+	let killNormal = $state(0);
+	let killBosses = $state<Record<BossKillKey, number>>({
+		bear: 0,
+		wolf: 0,
+		dragon: 0,
+		tiger: 0,
+		ironlord: 0
+	});
+
+	// ── 경험치 & 레벨 ───────────────────────────────────────────────────────────
+	let level    = $state(1);
+	let expProg  = $state(0);
+
+	// ── 알림 & 특수 상태 ─────────────────────────────────────────────────────────
+	let bossAlert   = $state(false);
 	let bossCleared = $state(false);
-	let finalWave = $state(1);
+	let gameOver    = $state(false);
+	let goDetail = $state<GameOverDetail | null>(null);
+	let overdrive        = $state(false);
+	let overdriveMs      = $state(0);
+	let killStreak       = $state(0);
+	let killStreakVisible = $state(false);
+	let killStreakTimer   = 0;
 
-	let bossAlertTimer = 0;
+	// ── 레벨업 / 발판 보급 카드 선택 ─────────────────────────────────────────────
+	let showCards = $state(false);
+	let cards: UpgradeCardInfo[] = $state([]);
+	let levelUpNum = $state(1);
+	let cardModalTitle = $state('🌟 LEVEL UP');
+	let cardPickHint = $state('카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요');
+
+	// ── ESC 일시정지 ───────────────────────────────────────────────────────────
+	let pauseOpen = $state(false);
+
+	function togglePause(): void {
+		if (gameOver || showCards) return;
+		pauseOpen = !pauseOpen;
+		EventBus.emit('game-pause-set', { paused: pauseOpen });
+	}
+
+	function resumeGame(): void {
+		pauseOpen = false;
+		EventBus.emit('game-pause-set', { paused: false });
+	}
+
+	function goMenu(): void {
+		pauseOpen = false;
+		EventBus.emit('game-pause-set', { paused: false });
+		goto('/');
+	}
+
+	// ── 파생 ────────────────────────────────────────────────────────────────────
+	const hpPct = $derived(maxHp > 0 ? (hp / maxHp) * 100 : 0);
+	
+
+	// ── 타이머 ──────────────────────────────────────────────────────────────────
+	let bossAlertTimer   = 0;
 	let bossClearedTimer = 0;
 
-	const hpPct = $derived(maxHp > 0 ? (hp / maxHp) * 100 : 0);
-	const gaugePct = $derived(maxGauge > 0 ? (gauge / maxGauge) * 100 : 0);
-	const gaugeFull = $derived(gauge >= maxGauge);
+	// ── 키보드: ESC 일시정지 / 카드 선택 ────────────────────────────────────────
+	function onKeydown(e: KeyboardEvent): void {
+		if (e.key === 'Escape') {
+			if (gameOver || showCards) return;
+			e.preventDefault();
+			togglePause();
+			return;
+		}
+		if (!showCards) return;
+		if (e.key === '1') selectCard(0);
+		else if (e.key === '2') selectCard(1);
+		else if (e.key === '3') selectCard(2);
+	}
 
+	function selectCard(idx: number): void {
+		if (!cards[idx]) return;
+		showCards = false;
+		EventBus.emit('upgrade-chosen', { id: cards[idx].id });
+	}
+
+	// ── EventBus 핸들러 ─────────────────────────────────────────────────────────
 	function onHpUpdate(...args: unknown[]): void {
 		const d = args[0] as { hp: number; maxHp: number };
-		hp = d.hp;
-		maxHp = d.maxHp;
+		hp = d.hp; maxHp = d.maxHp;
 	}
-	function onGaugeUpdate(...args: unknown[]): void {
-		const d = args[0] as { gauge: number; maxGauge: number };
-		gauge = d.gauge;
-		maxGauge = d.maxGauge;
+	function onUpgradePicked(...args: unknown[]): void {
+		const { id } = args[0] as { id: string };
+		const info = getUpgradePickInfo(id);
+		if (!info) return;
+		const add = rarityGradePoints(info.rarity);
+		const cur = pickedById[id];
+		pickedById = {
+			...pickedById,
+			[id]: cur
+				? { emoji: cur.emoji, name: cur.name, points: cur.points + add }
+				: { emoji: info.emoji, name: info.name, points: add }
+		};
 	}
-	function onMonsterCount(...args: unknown[]): void {
-		const d = args[0] as { remaining: number; total: number };
-		alive = d.remaining;
+	function onMonsterCount(..._args: unknown[]): void {
+		// 적 수 표시 제거 — 이벤트만 수신
 	}
-	function onWaveUpdate(...args: unknown[]): void {
-		const d = args[0] as { wave: number };
-		wave = d.wave;
+	function onSurvivalTimeUpdate(...args: unknown[]): void {
+		survivalSeconds = (args[0] as { seconds: number }).seconds;
+	}
+	function onKillStatsUpdate(...args: unknown[]): void {
+		const d = args[0] as { normal: number; bosses: Record<BossKillKey, number> };
+		killNormal = d.normal;
+		killBosses = { ...d.bosses };
+	}
+	function formForLevel(lv: number): number {
+		if (lv >= 20) return 8;
+		if (lv >= 17) return 7;
+		if (lv >= 14) return 6;
+		if (lv >= 11) return 5;
+		if (lv >= 9)  return 4;
+		if (lv >= 7)  return 3;
+		if (lv >= 5)  return 2;
+		if (lv >= 3)  return 1;
+		return 0;
+	}
+
+	function onExpUpdate(...args: unknown[]): void {
+		const d = args[0] as { level: number; progress: number };
+		level = d.level;
+		expProg = d.progress;
+		drawEvoPreview(formForLevel(level));
+	}
+	function onLevelUp(...args: unknown[]): void {
+		const d = args[0] as { level: number; cards: UpgradeCardInfo[] };
+		levelUpNum = d.level;
+		cards = d.cards;
+		cardModalTitle = `🌟 LEVEL UP — Lv.${d.level}`;
+		cardPickHint = '카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요';
+		showCards = true;
+	}
+	function onFieldCardOffer(...args: unknown[]): void {
+		const d = args[0] as { cards: UpgradeCardInfo[] };
+		cards = d.cards;
+		cardModalTitle = '📦 보급 캐시';
+		cardPickHint = '고지대 보급 — 1 · 2 · 3 키로 카드 1장을 선택하세요';
+		showCards = true;
 	}
 	function onBossIncoming(): void {
-		bossAlert = true;
-		bossCleared = false;
+		bossAlert = true; bossCleared = false;
 		clearTimeout(bossAlertTimer);
-		bossAlertTimer = window.setTimeout(() => {
-			bossAlert = false;
-		}, 4000);
+		bossAlertTimer = window.setTimeout(() => { bossAlert = false; }, 4000);
 	}
 	function onBossCleared(): void {
-		bossAlert = false;
-		bossCleared = true;
+		bossAlert = false; bossCleared = true;
 		clearTimeout(bossClearedTimer);
-		bossClearedTimer = window.setTimeout(() => {
-			bossCleared = false;
-		}, 3500);
+		bossClearedTimer = window.setTimeout(() => { bossCleared = false; }, 3500);
 	}
-	function onGameOver(): void {
-		finalWave = wave;
+	function onGameOver(...args: unknown[]): void {
+		const d = args[0] as
+			| {
+					survivalTime?: number;
+					bossCount?: number;
+					level?: number;
+					normalKills?: number;
+					bosses?: Record<BossKillKey, number>;
+					scoreTotal?: number;
+					scoreBoss?: number;
+					scoreLevel?: number;
+					scoreTime?: number;
+			  }
+			| undefined;
+		const surv = Math.floor(d?.survivalTime ?? survivalSeconds);
+		const lv = d?.level ?? level;
+		const norm = d?.normalKills ?? killNormal;
+		const bosses: Record<BossKillKey, number> = d?.bosses
+			? { ...d.bosses }
+			: { ...killBosses };
+		const sc =
+			d?.scoreTotal != null
+				? {
+						total: d.scoreTotal,
+						partBoss: d.scoreBoss ?? 0,
+						partLevel: d.scoreLevel ?? 0,
+						partTime: d.scoreTime ?? 0
+					}
+				: computeRunScore({ level: lv, survivalSeconds: surv, bossKills: bosses });
+		goDetail = {
+			survivalTime: surv,
+			level: lv,
+			normalKills: norm,
+			bosses,
+			scoreTotal: sc.total,
+			scoreBoss: sc.partBoss,
+			scoreLevel: sc.partLevel,
+			scoreTime: sc.partTime,
+			waveBossCount: d?.bossCount ?? 0
+		};
 		gameOver = true;
+		pauseOpen = false;
+		EventBus.emit('game-pause-set', { paused: false });
 	}
+	function onMinimapUpdate(...args: unknown[]): void {
+		drawMinimap(args[0] as MinimapData);
+	}
+	function onOverdriveStart(...args: unknown[]): void {
+		const d = args[0] as { duration: number };
+		overdrive = true; overdriveMs = d.duration;
+	}
+	function onOverdriveTick(...args: unknown[]): void {
+		overdriveMs = (args[0] as { remaining: number }).remaining;
+	}
+	function onOverdriveEnd(): void {
+		overdrive = false; overdriveMs = 0;
+	}
+	function onKillStreak(...args: unknown[]): void {
+		killStreak = (args[0] as { streak: number }).streak;
+		killStreakVisible = true;
+		clearTimeout(killStreakTimer);
+		killStreakTimer = window.setTimeout(() => { killStreakVisible = false; }, 2500);
+	}
+
 	function restart(): void {
-		gameOver = false;
-		bossAlert = false;
-		bossCleared = false;
+		gameOver = false; bossAlert = false; bossCleared = false; showCards = false;
+		pauseOpen = false;
+		goDetail = null;
+		killNormal = 0;
+		killBosses = { bear: 0, wolf: 0, dragon: 0, tiger: 0, ironlord: 0 };
+		pickedById = {};
+		cardModalTitle = '🌟 LEVEL UP';
+		cardPickHint = '카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요';
+		EventBus.emit('game-pause-set', { paused: false });
 		EventBus.emit('restart-game');
 	}
 
 	onMount(() => {
-		EventBus.on('hp-update', onHpUpdate);
-		EventBus.on('gauge-update', onGaugeUpdate);
-		EventBus.on('monster-count-update', onMonsterCount);
-		EventBus.on('wave-update', onWaveUpdate);
-		EventBus.on('boss-incoming', onBossIncoming);
-		EventBus.on('boss-cleared', onBossCleared);
-		EventBus.on('game-over', onGameOver);
+		// 초기 진화 프리뷰 렌더 (마운트 다음 틱에서 canvas가 준비됨)
+		setTimeout(() => drawEvoPreview(0), 50);
+		EventBus.on('hp-update',              onHpUpdate);
+		EventBus.on('monster-count-update',   onMonsterCount);
+		EventBus.on('survival-time-update',   onSurvivalTimeUpdate);
+		EventBus.on('exp-update',             onExpUpdate);
+		EventBus.on('level-up',             onLevelUp);
+		EventBus.on('field-card-offer',     onFieldCardOffer);
+		EventBus.on('boss-incoming',        onBossIncoming);
+		EventBus.on('boss-cleared',         onBossCleared);
+		EventBus.on('game-over',            onGameOver);
+		EventBus.on('minimap-update',       onMinimapUpdate);
+		EventBus.on('kill-stats-update',   onKillStatsUpdate);
+		EventBus.on('overdrive-start',      onOverdriveStart);
+		EventBus.on('overdrive-tick',       onOverdriveTick);
+		EventBus.on('overdrive-end',        onOverdriveEnd);
+		EventBus.on('kill-streak',          onKillStreak);
+		EventBus.on('upgrade-picked',       onUpgradePicked);
+		window.addEventListener('keydown', onKeydown);
 	});
 	onDestroy(() => {
-		EventBus.off('hp-update', onHpUpdate);
-		EventBus.off('gauge-update', onGaugeUpdate);
+		EventBus.off('hp-update',            onHpUpdate);
 		EventBus.off('monster-count-update', onMonsterCount);
-		EventBus.off('wave-update', onWaveUpdate);
-		EventBus.off('boss-incoming', onBossIncoming);
-		EventBus.off('boss-cleared', onBossCleared);
-		EventBus.off('game-over', onGameOver);
+		EventBus.off('survival-time-update',  onSurvivalTimeUpdate);
+		EventBus.off('exp-update',            onExpUpdate);
+		EventBus.off('level-up',             onLevelUp);
+		EventBus.off('field-card-offer',     onFieldCardOffer);
+		EventBus.off('boss-incoming',        onBossIncoming);
+		EventBus.off('boss-cleared',         onBossCleared);
+		EventBus.off('game-over',            onGameOver);
+		EventBus.off('minimap-update',       onMinimapUpdate);
+		EventBus.off('kill-stats-update',   onKillStatsUpdate);
+		EventBus.off('overdrive-start',      onOverdriveStart);
+		EventBus.off('overdrive-tick',       onOverdriveTick);
+		EventBus.off('overdrive-end',        onOverdriveEnd);
+		EventBus.off('kill-streak',          onKillStreak);
+		EventBus.off('upgrade-picked',       onUpgradePicked);
+		window.removeEventListener('keydown', onKeydown);
 		clearTimeout(bossAlertTimer);
 		clearTimeout(bossClearedTimer);
 	});
 </script>
 
 <div class="hud">
+
+	<!-- ── HP 위험 비넷 (HP 30% 이하) ─────────────────────────────────────── -->
+	{#if hpPct < 30}
+		<div class="danger-vignette" style="opacity:{(1 - hpPct / 30) * 0.75};"></div>
+	{/if}
+
+	<!-- ── 오버드라이브 글로우 ─────────────────────────────────────────────── -->
+	{#if overdrive}
+		<div class="overdrive-vignette"></div>
+		<div class="overdrive-banner">
+			⚡ OVERDRIVE ⚡  {Math.ceil(overdriveMs / 1000)}s
+		</div>
+	{/if}
+
+	<!-- ── 킬 스트릭 ────────────────────────────────────────────────────────── -->
+	{#if killStreakVisible}
+		<div class="streak-banner">{killStreak} KILL STREAK!</div>
+	{/if}
+
+	<!-- ── 상단 HUD ─────────────────────────────────────────────────────────── -->
 	<div class="hud-top">
-		<div class="bars">
-			<div class="bar-row">
-				<span class="label">HP</span>
-				<div class="bar hp">
-					<div class="fill" style="width:{hpPct}%"></div>
+		<!-- 왼쪽: 캐릭터 진화 프리뷰 -->
+		<div class="left-panel">
+			<div class="left-panel-main">
+				<div class="left-evo-column">
+					<div class="evo-hp-block">
+						<div class="evo-hp-label">HP</div>
+						<div class="evo-hp-values">
+							<span class="evo-hp-cur">{hp}</span>
+							<span class="evo-hp-sep">/</span>
+							<span class="evo-hp-max">{maxHp}</span>
+						</div>
+					</div>
+					<div class="evo-wrap">
+						<canvas bind:this={evoCanvas} width={80} height={110} class="evo-canvas"></canvas>
+						<div class="evo-label">Lv.{level}</div>
+					</div>
 				</div>
-				<span class="val">{Math.ceil(hp)}/{maxHp}</span>
-			</div>
-			<div class="bar-row">
-				<span class="label" class:glow={gaugeFull}>변신</span>
-				<div class="bar gauge" class:gauge-full={gaugeFull}>
-					<div class="fill" style="width:{gaugePct}%"></div>
-				</div>
-				<span class="val">{Math.ceil(gauge)}/{maxGauge}</span>
+				{#if pickedRows.length > 0}
+					<div class="picked-cards-grid" aria-label="획득 업그레이드">
+						{#each pickedRows as row (row.id)}
+							<span class="card-chip" title="{row.name} · 등급합 Lv.{row.points}">
+								<span class="chip-emoji">{row.emoji}</span>
+								<span class="chip-lv">Lv.{row.points}</span>
+							</span>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		</div>
-		<div class="top-right">
-			<div class="wave-badge">WAVE {wave}</div>
-			<div class="enemies">적 {alive}</div>
+
+		<!-- 가운데: 생존 시간 -->
+		<div class="center-panel">
+			<div class="time-display">{timeDisplay}</div>
+			<div class="time-label">SURVIVAL</div>
+			<div class="kill-stats" aria-label="처치 통계">
+				<div class="kill-stats-boss">
+					<span class="ks-head">보스</span>
+					<span class="ks-segs">
+						<span title="강철 곰">곰 {killBosses.bear}</span>
+						<span class="ks-dot">·</span>
+						<span title="기계 늑대">늑대 {killBosses.wolf}</span>
+						<span class="ks-dot">·</span>
+						<span title="철갑 드래곤">용 {killBosses.dragon}</span>
+						<span class="ks-dot">·</span>
+						<span title="사이버 호랑이">호랑이 {killBosses.tiger}</span>
+						<span class="ks-dot">·</span>
+						<span title="아이언 로드">로드 {killBosses.ironlord}</span>
+					</span>
+				</div>
+				<div class="kill-stats-norm">일반 몬스터 <strong>{killNormal}</strong></div>
+			</div>
+		</div>
+
+		<!-- 오른쪽: 미니맵 -->
+		<div class="right-panel">
+			<div class="minimap-wrap">
+				<canvas
+					bind:this={minimapCanvas}
+					width={MMAP_SIZE}
+					height={MMAP_SIZE}
+					class="minimap-canvas"
+				></canvas>
+				<div class="minimap-label">MAP</div>
+			</div>
 		</div>
 	</div>
 
+	<!-- ── 바닥 EXP 바 ──────────────────────────────────────────────────────── -->
+	<div class="exp-bar-wrap">
+		<div class="exp-bar-fill" style="width:{expProg * 100}%;"></div>
+		<span class="exp-label">EXP</span>
+	</div>
+
+	<!-- ── BOSS 알림 ────────────────────────────────────────────────────────── -->
 	{#if bossAlert}
-		<div class="boss-banner">
-			<span class="boss-text">⚠ BOSS INCOMING ⚠</span>
-		</div>
+		<div class="boss-banner"><span class="boss-text">⚠ BOSS INCOMING ⚠</span></div>
 	{/if}
-
 	{#if bossCleared}
-		<div class="cleared-banner">
-			<span class="cleared-text">BOSS DEFEATED — HP RESTORED!</span>
-		</div>
+		<div class="cleared-banner"><span class="cleared-text">BOSS DEFEATED — HP RESTORED!</span></div>
 	{/if}
 
-	{#if gameOver}
-		<div class="overlay">
-			<div class="box over">
-				<h2>GAME OVER</h2>
-				<p>WAVE <strong>{finalWave}</strong> 까지 생존했습니다</p>
-				<p class="sub">메카닉이 파괴되었습니다</p>
-				<button onclick={restart}>재시작</button>
+	<!-- ── 일시정지 (ESC) ───────────────────────────────────────────────────── -->
+	{#if pauseOpen}
+		<div class="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+			<div class="pause-modal">
+				<h2 id="pause-title">일시정지</h2>
+				<p class="pause-hint">ESC 키로 닫기</p>
+				<div class="pause-actions">
+					<button type="button" class="pause-btn primary" onclick={resumeGame}>계속하기</button>
+					<button type="button" class="pause-btn" onclick={goMenu}>메뉴로 돌아가기</button>
+				</div>
 			</div>
 		</div>
 	{/if}
+
+	<!-- ── 레벨업 카드 선택 ─────────────────────────────────────────────────── -->
+	{#if showCards}
+		<div class="card-overlay">
+			<div class="card-modal">
+				<div class="card-title">{cardModalTitle}</div>
+				<p class="card-hint">{cardPickHint}</p>
+				<div class="card-row">
+					{#each cards as card, i (card.id)}
+						<button
+							class="upgrade-card rarity-{card.rarity}"
+							onclick={() => selectCard(i)}
+						>
+							<div class="card-num">[{i + 1}]</div>
+							<div class="card-emoji">{card.emoji}</div>
+							<div class="card-name">{card.name}</div>
+							<div class="card-desc">{card.description}</div>
+							<div class="card-rarity-tag">{card.rarity.toUpperCase()}</div>
+						</button>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- ── 게임 오버 ──────────────────────────────────────────────────────────── -->
+	{#if gameOver && goDetail}
+		<div class="overlay">
+			<div class="box over go-box">
+				<h2>GAME OVER</h2>
+				<p class="go-score-line">
+					총 점수 <strong class="go-score-total">{goDetail.scoreTotal.toLocaleString('ko-KR')}</strong>
+				</p>
+				<div class="go-score-grid" aria-label="점수 상세">
+					<span class="go-key">보스 기여</span><strong class="go-part">{goDetail.scoreBoss.toLocaleString('ko-KR')}</strong>
+					<span class="go-key">레벨 기여</span><strong class="go-part">{goDetail.scoreLevel.toLocaleString('ko-KR')}</strong>
+					<span class="go-key">생존 기여</span><strong class="go-part">{goDetail.scoreTime.toLocaleString('ko-KR')}</strong>
+				</div>
+				<p>
+					생존 시간
+					<strong
+						>{String(Math.floor(goDetail.survivalTime / 60)).padStart(2, '0')}:{String(
+							goDetail.survivalTime % 60
+						).padStart(2, '0')}</strong
+					>
+					<span class="go-inline-meta">
+						&nbsp;·&nbsp; 달성 레벨 <strong>{goDetail.level}</strong></span
+					>
+				</p>
+				<div class="go-kill-block">
+					<div class="go-kill-title">보스 처치 (단계별)</div>
+					<ul class="go-kill-list">
+						<li><span>강철 곰</span> <strong>{goDetail.bosses.bear}</strong></li>
+						<li><span>기계 늑대</span> <strong>{goDetail.bosses.wolf}</strong></li>
+						<li><span>철갑 드래곤</span> <strong>{goDetail.bosses.dragon}</strong></li>
+						<li><span>사이버 호랑이</span> <strong>{goDetail.bosses.tiger}</strong></li>
+						<li><span>아이언 로드</span> <strong>{goDetail.bosses.ironlord}</strong></li>
+					</ul>
+					<p class="go-norm-line">
+						일반 몬스터 처치 <strong>{goDetail.normalKills.toLocaleString('ko-KR')}</strong>
+					</p>
+					{#if goDetail.waveBossCount > 0}
+						<p class="go-wave-hint">(웨이브 난이도 기준 보스 격파 {goDetail.waveBossCount}회)</p>
+					{/if}
+				</div>
+				<button type="button" onclick={restart}>재시작</button>
+			</div>
+		</div>
+	{/if}
+
+
 </div>
 
 <style>
@@ -144,213 +790,519 @@
 		color: #eee;
 		z-index: 10;
 	}
+
+	/* ── 상단 ── */
 	.hud-top {
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
 		padding: 12px 16px;
 	}
-	.bars {
+
+	.left-panel  {
+		min-width: 0;
+		max-width: min(420px, 96vw);
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		align-items: flex-start;
 	}
-	.bar-row {
+	.left-panel-main {
 		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 10px;
+	}
+	.left-evo-column {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 6px;
+		flex-shrink: 0;
+		width: max-content;
+		max-width: min(100%, 200px);
+	}
+	.evo-hp-block {
+		background: rgba(0, 12, 28, 0.82);
+		border: 1px solid rgba(0, 200, 255, 0.28);
+		border-radius: 6px;
+		padding: 6px 10px 7px;
+		box-shadow: 0 0 10px rgba(0, 100, 180, 0.15);
+		box-sizing: border-box;
+	}
+	.evo-hp-label {
+		font-size: 0.52rem;
+		font-weight: 800;
+		letter-spacing: 0.2em;
+		color: rgba(0, 200, 255, 0.65);
+		margin-bottom: 2px;
+	}
+	.evo-hp-values {
+		font-variant-numeric: tabular-nums;
+		font-size: 0.95rem;
+		font-weight: 800;
+		letter-spacing: 0.02em;
+		white-space: nowrap;
+	}
+	.evo-hp-cur { color: #7effb0; text-shadow: 0 0 8px rgba(0, 255, 160, 0.35); }
+	.evo-hp-sep { color: rgba(180, 200, 220, 0.55); margin: 0 1px; font-weight: 600; }
+	.evo-hp-max { color: rgba(220, 235, 255, 0.88); }
+
+	/* 획득 카드: 5열 × 3행 고정 높이, 초과 시 세로 스크롤 */
+	.picked-cards-grid {
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-auto-rows: minmax(36px, auto);
+		gap: 4px;
+		width: 198px;
+		flex-shrink: 0;
+		max-height: calc(3 * 36px + 2 * 4px);
+		overflow-x: hidden;
+		overflow-y: auto;
+		align-content: start;
+		padding: 2px 0;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(0, 180, 255, 0.35) transparent;
+		box-sizing: border-box;
+	}
+	.card-chip {
+		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 8px;
-	}
-	.label {
-		width: 32px;
-		font-size: 0.75rem;
+		justify-content: center;
+		gap: 1px;
+		padding: 3px 2px;
+		min-width: 0;
+		font-size: 0.5rem;
 		font-weight: 700;
-		text-shadow: 1px 1px 2px #000;
+		border-radius: 6px;
+		background: rgba(0, 18, 40, 0.9);
+		border: 1px solid rgba(0, 200, 255, 0.22);
+		color: #ddeeff;
+		text-align: center;
+		line-height: 1.1;
+		pointer-events: auto;
+		cursor: default;
 	}
-	.label.glow {
-		color: #ffdd44;
-		text-shadow:
-			0 0 6px #ffaa00,
-			0 0 12px #ffaa00;
-		animation: pulse 0.6s ease-in-out infinite alternate;
+	.chip-emoji { font-size: 0.72rem; line-height: 1; }
+	.chip-lv {
+		font-variant-numeric: tabular-nums;
+		color: #88ddff;
+		font-size: 0.5rem;
+		letter-spacing: 0.02em;
 	}
-	@keyframes pulse {
-		to {
-			opacity: 0.7;
-		}
+	.center-panel {
+		display: flex; flex-direction: column; align-items: center;
+		gap: 2px;
+		max-width: min(96vw, 360px);
 	}
-	.bar {
-		width: 180px;
-		height: 14px;
-		background: rgba(0, 0, 0, 0.55);
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		border-radius: 3px;
+	.kill-stats {
+		margin-top: 6px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		font-size: 0.52rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: rgba(180, 210, 235, 0.88);
+		line-height: 1.35;
+		text-align: center;
+	}
+	.kill-stats-boss {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		align-items: baseline;
+		gap: 0 4px;
+		max-width: 100%;
+	}
+	.kill-stats .ks-head {
+		color: rgba(255, 140, 80, 0.95);
+		font-weight: 800;
+		margin-right: 2px;
+	}
+	.kill-stats .ks-segs {
+		display: inline;
+		font-variant-numeric: tabular-nums;
+	}
+	.kill-stats .ks-dot {
+		color: rgba(120, 160, 190, 0.55);
+		margin: 0 1px;
+	}
+	.kill-stats-norm {
+		color: rgba(160, 200, 230, 0.82);
+		font-variant-numeric: tabular-nums;
+	}
+	.kill-stats-norm strong {
+		color: #a8f0ff;
+		font-weight: 800;
+	}
+	.time-display {
+		font-size: 2.2rem; font-weight: 900; letter-spacing: 0.12em;
+		color: #ffffff;
+		text-shadow: 0 0 14px rgba(0,200,255,0.9), 0 0 28px rgba(0,120,255,0.5);
+		font-variant-numeric: tabular-nums;
+	}
+	.time-label {
+		font-size: 0.60rem; font-weight: 700; letter-spacing: 0.22em;
+		color: rgba(0,200,255,0.75); text-transform: uppercase;
+	}
+	.right-panel { min-width: 180px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+
+	/* ── 진화 프리뷰 (너비 = 위 HP 블록과 동일) ── */
+	.evo-wrap {
+		position: relative;
+		width: 100%;
+		height: 110px;
+		box-sizing: border-box;
+		border-radius: 4px;
+		background: rgba(0,10,25,0.82);
+		border: 1px solid rgba(0,200,255,0.3);
+		box-shadow: 0 0 10px rgba(0,150,255,0.2);
 		overflow: hidden;
 	}
-	.bar .fill {
-		height: 100%;
-		transition: width 0.15s ease-out;
-		border-radius: 2px;
+	.evo-canvas {
+		display: block;
+		width: 80px;
+		height: 110px;
+		margin: 0 auto;
 	}
-	.hp .fill {
-		background: linear-gradient(180deg, #ff5555, #cc2222);
-	}
-	.gauge .fill {
-		background: linear-gradient(180deg, #55aaff, #2266cc);
-	}
-	.gauge-full .fill {
-		background: linear-gradient(180deg, #ffdd44, #ffaa00);
-		box-shadow: 0 0 6px #ffaa00;
-	}
-	.val {
-		font-size: 0.7rem;
-		min-width: 54px;
-		text-shadow: 1px 1px 2px #000;
-	}
-	.top-right {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 6px;
-	}
-	.wave-badge {
-		font-size: 1.1rem;
-		font-weight: 800;
-		letter-spacing: 0.12em;
-		color: #66ccff;
-		text-shadow:
-			0 0 8px #44aaff,
-			1px 1px 3px #000;
-		background: rgba(0, 30, 60, 0.55);
-		padding: 3px 14px;
-		border-radius: 4px;
-		border: 1px solid rgba(100, 180, 255, 0.3);
-	}
-	.enemies {
-		font-size: 0.85rem;
-		font-weight: 600;
-		text-shadow: 1px 1px 3px #000;
-		background: rgba(0, 0, 0, 0.4);
-		padding: 4px 12px;
-		border-radius: 4px;
+	.evo-label {
+		position: absolute; top: 4px; left: 0; right: 0; bottom: auto;
+		text-align: center;
+		font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em;
+		color: #00eeff; text-shadow: 0 0 6px #0099ff;
+		pointer-events: none;
 	}
 
-	/* Boss alert banner */
+	/* ── 일시정지 모달 ── */
+	.pause-overlay {
+		position: absolute; inset: 0;
+		display: flex; align-items: center; justify-content: center;
+		background: rgba(0, 8, 20, 0.78);
+		pointer-events: auto;
+		z-index: 80;
+		backdrop-filter: blur(4px);
+	}
+	.pause-modal {
+		padding: 28px 36px 32px;
+		min-width: 280px;
+		border-radius: 12px;
+		background: linear-gradient(165deg, rgba(15, 25, 45, 0.96), rgba(8, 12, 28, 0.98));
+		border: 1px solid rgba(0, 200, 255, 0.35);
+		box-shadow: 0 0 32px rgba(0, 120, 200, 0.25);
+		text-align: center;
+	}
+	.pause-modal h2 {
+		margin: 0 0 8px;
+		font-size: 1.35rem;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		color: #00ddff;
+		text-shadow: 0 0 12px rgba(0, 200, 255, 0.5);
+	}
+	.pause-hint {
+		margin: 0 0 22px;
+		font-size: 0.78rem;
+		color: rgba(180, 200, 220, 0.75);
+	}
+	.pause-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.pause-btn {
+		padding: 10px 18px;
+		font-size: 0.88rem;
+		font-weight: 700;
+		border-radius: 8px;
+		cursor: pointer;
+		font-family: inherit;
+		border: 1px solid rgba(100, 150, 190, 0.45);
+		background: rgba(0, 0, 0, 0.35);
+		color: rgba(200, 215, 235, 0.9);
+		transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+	}
+	.pause-btn:hover {
+		border-color: #6af;
+		color: #bff;
+	}
+	.pause-btn.primary {
+		border-color: rgba(0, 200, 255, 0.55);
+		background: rgba(0, 60, 90, 0.45);
+		color: #00eeff;
+	}
+	.pause-btn.primary:hover {
+		box-shadow: 0 0 16px rgba(0, 200, 255, 0.35);
+	}
+
+	/* ── 미니맵 ── */
+	.minimap-wrap {
+		position: relative; width: 160px; height: 160px;
+		border-radius: 4px; overflow: hidden;
+		box-shadow: 0 0 12px rgba(0,200,255,0.3), 0 0 4px rgba(0,0,0,0.8);
+	}
+	.minimap-canvas { display: block; width: 160px; height: 160px; }
+	.minimap-label {
+		position: absolute; bottom: 2px; left: 4px;
+		font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+		color: rgba(0,200,255,0.5); pointer-events: none;
+	}
+
+	/* ── EXP 바 ── */
+	.exp-bar-wrap {
+		position: absolute; bottom: 0; left: 0; right: 0;
+		height: 20px; background: rgba(0,0,0,0.5);
+		border-top: 1px solid rgba(0,200,255,0.2);
+	}
+	.exp-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #0066ff, #00ddff);
+		box-shadow: 0 0 8px #00aaff;
+		transition: width 0.3s ease-out;
+	}
+	.exp-label {
+		position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+		font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
+		color: rgba(255,255,255,0.7); text-shadow: 1px 1px 2px #000;
+		pointer-events: none;
+	}
+
+	/* ── 레벨업 카드 오버레이 ── */
+	.card-overlay {
+		position: absolute; inset: 0;
+		display: flex; align-items: center; justify-content: center;
+		background: rgba(0,0,0,0.72);
+		pointer-events: auto;
+		backdrop-filter: blur(2px);
+	}
+	.card-modal {
+		display: flex; flex-direction: column; align-items: center; gap: 16px;
+		padding: 32px 24px 28px; max-width: 900px; width: 95%;
+	}
+	.card-title {
+		font-size: 2rem; font-weight: 900; letter-spacing: 0.12em;
+		color: #ffdd44;
+		text-shadow: 0 0 20px #ffaa00, 0 0 40px #ff8800, 2px 2px 4px #000;
+		animation: titlePulse 0.9s ease-in-out infinite alternate;
+	}
+	@keyframes titlePulse { to { text-shadow: 0 0 30px #ffcc00, 0 0 60px #ffaa00, 2px 2px 4px #000; } }
+	.card-hint {
+		font-size: 0.85rem; color: #aaa; margin: 0;
+		text-shadow: 1px 1px 2px #000;
+	}
+	.card-row {
+		display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;
+	}
+	.upgrade-card {
+		width: 230px; padding: 22px 16px;
+		display: flex; flex-direction: column; align-items: center; gap: 10px;
+		border-radius: 12px; cursor: pointer;
+		transition: transform 0.15s, box-shadow 0.15s;
+		color: #eee; text-align: center;
+		font-family: inherit;
+	}
+	.upgrade-card:hover, .upgrade-card:focus {
+		transform: translateY(-6px) scale(1.03);
+		outline: none;
+	}
+	.rarity-common {
+		background: linear-gradient(160deg, rgba(40,50,70,0.92), rgba(20,30,50,0.95));
+		border: 2px solid rgba(100,180,255,0.45);
+		box-shadow: 0 0 16px rgba(80,150,255,0.2);
+	}
+	.rarity-common:hover  { box-shadow: 0 0 28px rgba(80,150,255,0.6); border-color: #88ccff; }
+	.rarity-rare {
+		background: linear-gradient(160deg, rgba(50,30,80,0.92), rgba(25,10,55,0.95));
+		border: 2px solid rgba(180,100,255,0.55);
+		box-shadow: 0 0 20px rgba(150,80,255,0.25);
+	}
+	.rarity-rare:hover    { box-shadow: 0 0 32px rgba(180,80,255,0.7); border-color: #cc88ff; }
+	.rarity-epic {
+		background: linear-gradient(160deg, rgba(80,30,10,0.92), rgba(50,10,5,0.95));
+		border: 2px solid rgba(255,120,30,0.65);
+		box-shadow: 0 0 24px rgba(255,100,20,0.35);
+	}
+	.rarity-epic:hover    { box-shadow: 0 0 40px rgba(255,120,20,0.8); border-color: #ff9944; }
+
+	.card-num    { font-size: 0.72rem; color: #888; font-weight: 700; letter-spacing: 0.1em; }
+	.card-emoji  { font-size: 2.2rem; }
+	.card-name   { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.06em; }
+	.card-desc   { font-size: 0.82rem; color: #ccc; line-height: 1.4; }
+	.card-rarity-tag { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.15em; opacity: 0.6; }
+
+	/* ── BOSS 배너 ── */
 	.boss-banner {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
+		position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
 		animation: bossFlash 0.5s ease-in-out infinite alternate;
 	}
 	.boss-text {
-		font-size: 2.2rem;
-		font-weight: 900;
-		letter-spacing: 0.15em;
-		color: #ff4400;
-		text-shadow:
-			0 0 20px #ff2200,
-			0 0 40px #ff0000,
-			2px 2px 4px #000;
+		font-size: 2.2rem; font-weight: 900; letter-spacing: 0.15em; color: #ff4400;
+		text-shadow: 0 0 20px #ff2200, 0 0 40px #ff0000, 2px 2px 4px #000;
 	}
-	@keyframes bossFlash {
-		from {
-			opacity: 1;
-		}
-		to {
-			opacity: 0.4;
-		}
-	}
+	@keyframes bossFlash { to { opacity: 0.4; } }
 
-	/* Boss cleared banner */
 	.cleared-banner {
-		position: absolute;
-		top: 38%;
-		left: 50%;
-		transform: translateX(-50%);
+		position: absolute; top: 38%; left: 50%; transform: translateX(-50%);
 		animation: slideFade 3.5s ease-out forwards;
 	}
 	.cleared-text {
-		font-size: 1.5rem;
-		font-weight: 800;
-		letter-spacing: 0.1em;
-		color: #44ff88;
-		text-shadow:
-			0 0 16px #22dd66,
-			2px 2px 4px #000;
-		white-space: nowrap;
+		font-size: 1.5rem; font-weight: 800; letter-spacing: 0.1em; color: #44ff88; white-space: nowrap;
+		text-shadow: 0 0 16px #22dd66, 2px 2px 4px #000;
 	}
 	@keyframes slideFade {
-		0% {
-			opacity: 0;
-			transform: translateX(-50%) translateY(20px);
-		}
-		15% {
-			opacity: 1;
-			transform: translateX(-50%) translateY(0);
-		}
-		75% {
-			opacity: 1;
-		}
-		100% {
-			opacity: 0;
-		}
+		0%   { opacity: 0; transform: translateX(-50%) translateY(20px); }
+		15%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+		75%  { opacity: 1; }
+		100% { opacity: 0; }
 	}
 
-	/* Game over overlay */
+	/* ── HP 위험 비넷 ── */
+	.danger-vignette {
+		position: absolute; inset: 0; pointer-events: none;
+		background: radial-gradient(ellipse at center, transparent 35%, rgba(220,20,20,0.82) 100%);
+		animation: dangerPulse 0.7s ease-in-out infinite alternate;
+	}
+	@keyframes dangerPulse { to { opacity: 0.55; } }
+
+	/* ── 오버드라이브 ── */
+	.overdrive-vignette {
+		position: absolute; inset: 0; pointer-events: none;
+		background: radial-gradient(ellipse at center, transparent 45%, rgba(255,220,0,0.30) 100%);
+		animation: overPulse 0.4s ease-in-out infinite alternate;
+	}
+	@keyframes overPulse { to { opacity: 0.55; } }
+	.overdrive-banner {
+		position: absolute; top: 90px; left: 50%; transform: translateX(-50%);
+		font-size: 1.5rem; font-weight: 900; letter-spacing: 0.16em; color: #ffee00;
+		text-shadow: 0 0 16px #ffcc00, 0 0 32px #ff8800, 2px 2px 4px #000;
+		animation: titlePulse 0.5s ease-in-out infinite alternate;
+		pointer-events: none;
+	}
+
+	/* ── 킬 스트릭 ── */
+	.streak-banner {
+		position: absolute; top: 42%; left: 50%; transform: translateX(-50%);
+		font-size: 1.8rem; font-weight: 900; letter-spacing: 0.12em; color: #ff8800;
+		text-shadow: 0 0 20px #ff4400, 2px 2px 4px #000;
+		animation: streakIn 2.5s ease-out forwards;
+		pointer-events: none;
+	}
+	@keyframes streakIn {
+		0%   { opacity: 0; transform: translateX(-50%) scale(1.4); }
+		10%  { opacity: 1; transform: translateX(-50%) scale(1.0); }
+		70%  { opacity: 1; }
+		100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
+	}
+
+	/* ── 게임 오버 ── */
 	.overlay {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(0, 0, 0, 0.65);
-		pointer-events: auto;
+		position: absolute; inset: 0;
+		display: flex; align-items: center; justify-content: center;
+		background: rgba(0,0,0,0.65); pointer-events: auto;
 	}
 	.box {
+		text-align: center; padding: 2.5rem 3.5rem;
+		border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+	}
+	.box.over { background: rgba(60,20,20,0.92); }
+	.box.go-box {
+		max-width: min(420px, 94vw);
+		max-height: min(88vh, 640px);
+		overflow-y: auto;
+		padding: 1.75rem 2rem 2rem;
+		text-align: left;
+	}
+	.box h2   { margin: 0 0 0.5rem; font-size: 2.2rem; letter-spacing: 0.15em; color: #ff5555; text-align: center; }
+	.box p    { margin: 0 0 0.4rem; color: #ccc; }
+	.box p strong { color: #66ccff; font-size: 1.3rem; }
+	.go-score-line {
 		text-align: center;
-		padding: 2.5rem 3.5rem;
-		border-radius: 12px;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
-	.box.over {
-		background: rgba(60, 20, 20, 0.9);
-	}
-	.box h2 {
-		margin: 0 0 0.5rem;
-		font-size: 2.2rem;
-		letter-spacing: 0.15em;
-	}
-	.over h2 {
-		color: #ff5555;
-		text-shadow: 0 0 20px rgba(255, 85, 85, 0.4);
-	}
-	.box p {
-		margin: 0 0 0.4rem;
-		color: #ccc;
 		font-size: 1rem;
+		margin-bottom: 0.25rem !important;
 	}
-	.box p strong {
-		color: #66ccff;
-		font-size: 1.3rem;
+	.go-score-total {
+		font-size: 1.85rem !important;
+		color: #ffee88 !important;
+		text-shadow: 0 0 12px rgba(255, 220, 100, 0.35);
 	}
-	.box p.sub {
-		color: #888;
+	.go-score-grid {
+		margin: 0 0 0.9rem;
+		padding: 0.55rem 0.7rem;
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 0.25rem 0.8rem;
+		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.24);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		align-items: center;
+	}
+	.go-key {
+		font-size: 0.76rem;
+		color: #9aa;
+		letter-spacing: 0.04em;
+	}
+	.go-part { color: #b8e8ff; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+	.go-inline-meta { font-size: 0.9rem; color: #aaa; }
+	.go-inline-meta strong { font-size: inherit; color: #8cf; }
+	.go-kill-block {
+		margin: 0.85rem 0 1.25rem;
+		padding: 0.75rem 0.9rem;
+		border-radius: 8px;
+		background: rgba(0, 0, 0, 0.28);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+	}
+	.go-kill-title {
+		font-size: 0.72rem;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		color: rgba(255, 160, 120, 0.95);
+		margin-bottom: 0.45rem;
+	}
+	.go-kill-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.28rem 0;
+		font-size: 0.78rem;
+		color: #c8c8c8;
+	}
+	.go-kill-list li {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.22rem 0.1rem;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.go-kill-list li strong {
 		font-size: 0.85rem;
-		margin-bottom: 1.5rem;
+		color: #7df;
+		font-variant-numeric: tabular-nums;
+	}
+	.go-norm-line {
+		margin-top: 0.65rem !important;
+		margin-bottom: 0 !important;
+		font-size: 0.82rem;
+		color: #bbb;
+	}
+	.go-norm-line strong { font-size: 0.95rem; color: #9f9; }
+	.go-wave-hint {
+		margin: 0.35rem 0 0 !important;
+		font-size: 0.65rem;
+		color: #777;
+	}
+	.box.go-box > button {
+		display: block;
+		margin: 0 auto;
 	}
 	.box button {
-		padding: 0.6rem 2rem;
-		font-size: 1rem;
-		font-weight: 600;
-		border: 2px solid #6af;
-		background: transparent;
-		color: #6af;
-		border-radius: 6px;
-		cursor: pointer;
-		transition: all 0.2s;
+		padding: 0.6rem 2rem; font-size: 1rem; font-weight: 600;
+		border: 2px solid #6af; background: transparent; color: #6af;
+		border-radius: 6px; cursor: pointer; transition: all 0.2s;
 	}
-	.box button:hover {
-		background: #6af;
-		color: #111;
-	}
+	.box button:hover { background: #6af; color: #111; }
+
 </style>
