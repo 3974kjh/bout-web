@@ -8,21 +8,57 @@
 	<div class="scan" aria-hidden="true"></div>
 
 	<section class="hero">
-		<p class="eyebrow">3D MECH · SURVIVE · AUTO FIRE</p>
-		<h1 class="title">BOUT</h1>
-		<p class="tagline">넓은 행성에서 몰려오는 기계 군단을 뚫고 살아남으세요.</p>
+		<div class="hero-inner">
+			<p class="eyebrow">3D MECH · SURVIVE · AUTO FIRE</p>
+			<h1 class="title">BOUT</h1>
+			<p class="tagline">넓은 행성에서 몰려오는 기계 군단을 뚫고 살아남으세요.</p>
 
-		<ul class="pills" aria-label="게임 특징">
-			<li>자동 사격</li>
-			<li>레벨업 카드</li>
-			<li>보스 러시</li>
-			<li>미니맵</li>
-		</ul>
+			<ul class="pills" aria-label="게임 특징">
+				<li>자동 사격</li>
+				<li>레벨업 카드</li>
+				<li>보스 러시</li>
+				<li>미니맵</li>
+			</ul>
 
-		<button type="button" class="cta" onclick={() => goto('/game')}>
-			<span class="cta-label">작전 개시</span>
-			<span class="cta-sub">Enter the field</span>
-		</button>
+			<div class="action-stack">
+				<button type="button" class="cta" onclick={() => goto('/game')}>
+					<span class="cta-label">작전 개시</span>
+					<span class="cta-sub">Enter the field</span>
+				</button>
+				<button type="button" class="btn-shop" onclick={() => goto('/shop')}>
+					<span class="btn-shop-row">
+						<svg class="btn-shop-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+							<path
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.6"
+								stroke-linejoin="round"
+								d="M4 8.5h16v9H4v-9zm2 0V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1.5M9 21v-3.5h6V21"
+							/>
+							<path
+								fill="currentColor"
+								d="M8 12h2v2H8v-2zm6 0h2v2h-2v-2z"
+								opacity="0.85"
+							/>
+						</svg>
+						<span class="btn-shop-label">정비소</span>
+					</span>
+					<span class="btn-shop-hint">기체 · 미사일 색 · 선호 카드</span>
+				</button>
+				<button type="button" class="btn-rank" onclick={() => goto('/rank')}>
+					<span class="btn-rank-row">
+						<svg class="btn-rank-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+							<path
+								fill="currentColor"
+								d="M5 3h2v2h10V3h2v4.2c0 1.68-1.02 3.12-2.47 3.73L17 19H7l-.53-8.07A4.2 4.2 0 0 1 5 7.2V3zm2.2 4.2c0 .55.45 1 1 1h7.6c.55 0 1-.45 1-1V5H7.2v2.2zM8.5 21h7v2h-7v-2z"
+							/>
+						</svg>
+						<span class="btn-rank-label">랭킹</span>
+					</span>
+					<span class="btn-rank-hint">기록 · 시상대 · 상세 목록</span>
+				</button>
+			</div>
+		</div>
 
 		<div class="hud-hint" aria-hidden="true">
 			<div class="fake-bar">
@@ -128,7 +164,19 @@
 		position: relative;
 		z-index: 1;
 		text-align: center;
-		max-width: 36rem;
+		width: 100%;
+		max-width: min(28rem, 100%);
+		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.hero-inner {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 
 	.eyebrow {
@@ -181,13 +229,23 @@
 		color: #b8ecff;
 	}
 
+	.action-stack {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.65rem;
+	}
+
 	.cta {
 		position: relative;
+		width: 100%;
+		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 0.15rem;
-		padding: 0.85rem 2.6rem;
+		padding: 1rem 1.25rem;
 		border: none;
 		border-radius: 6px;
 		cursor: pointer;
@@ -196,6 +254,132 @@
 			0 0 0 1px rgba(0, 220, 255, 0.45),
 			0 0 28px rgba(0, 180, 255, 0.25);
 		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.btn-shop {
+		position: relative;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 0.78rem 1rem;
+		border-radius: 4px;
+		border: none;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3rem;
+		color: #b8ecff;
+		font-size: 0.82rem;
+		font-weight: 800;
+		letter-spacing: 0.14em;
+		background: linear-gradient(180deg, rgba(0, 28, 52, 0.75), rgba(0, 12, 26, 0.92));
+		box-shadow:
+			inset 0 0 0 1px rgba(0, 200, 255, 0.38),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06),
+			0 4px 14px rgba(0, 0, 0, 0.35);
+		clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+		transition:
+			box-shadow 0.16s ease,
+			color 0.16s ease,
+			transform 0.16s ease;
+	}
+	.btn-shop:hover {
+		color: #e8ffff;
+		box-shadow:
+			inset 0 0 0 1px rgba(0, 240, 255, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1),
+			0 0 20px rgba(0, 200, 255, 0.2),
+			0 6px 18px rgba(0, 0, 0, 0.4);
+		transform: translateY(-1px);
+	}
+	.btn-shop-row {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+	.btn-shop-icon {
+		width: 1.35rem;
+		height: 1.35rem;
+		flex-shrink: 0;
+		opacity: 0.95;
+		filter: drop-shadow(0 0 6px rgba(0, 200, 255, 0.35));
+	}
+	.btn-shop-label {
+		font-size: 0.84rem;
+		font-weight: 900;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		text-shadow: 0 0 10px rgba(0, 40, 60, 0.5);
+	}
+	.btn-shop-hint {
+		font-size: 0.58rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: rgba(150, 200, 230, 0.65);
+	}
+
+	.btn-rank {
+		position: relative;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 0.78rem 1rem;
+		border-radius: 4px;
+		border: none;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3rem;
+		color: #ffe8b8;
+		font-size: 0.82rem;
+		font-weight: 800;
+		letter-spacing: 0.14em;
+		background: linear-gradient(180deg, rgba(48, 36, 12, 0.75), rgba(20, 14, 6, 0.92));
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 200, 100, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06),
+			0 4px 14px rgba(0, 0, 0, 0.35);
+		clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+		transition:
+			box-shadow 0.16s ease,
+			color 0.16s ease,
+			transform 0.16s ease;
+	}
+	.btn-rank:hover {
+		color: #fff4d8;
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 220, 140, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1),
+			0 0 20px rgba(200, 140, 40, 0.2),
+			0 6px 18px rgba(0, 0, 0, 0.4);
+		transform: translateY(-1px);
+	}
+	.btn-rank-row {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+	.btn-rank-icon {
+		width: 1.35rem;
+		height: 1.35rem;
+		flex-shrink: 0;
+		opacity: 0.95;
+		filter: drop-shadow(0 0 6px rgba(255, 200, 100, 0.35));
+	}
+	.btn-rank-label {
+		font-size: 0.84rem;
+		font-weight: 900;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		text-shadow: 0 0 10px rgba(0, 40, 60, 0.5);
+	}
+	.btn-rank-hint {
+		font-size: 0.58rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: rgba(220, 180, 120, 0.65);
 	}
 
 	.cta::before {
@@ -299,7 +483,7 @@
 		position: relative;
 		z-index: 1;
 		margin-top: 2.5rem;
-		width: min(100%, 22rem);
+		width: min(100%, 28rem);
 		padding: 1rem 1.15rem;
 		border-radius: 8px;
 		background: rgba(0, 10, 24, 0.55);

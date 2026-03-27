@@ -7,6 +7,7 @@ src/
 ├── routes/
 │   ├── +layout.svelte
 │   ├── +page.svelte              # 메인 메뉴(랜딩)
+│   ├── shop/+page.svelte         # 정비소(기체·미사일 색·선호 카드 → IndexedDB)
 │   └── game/
 │       ├── +page.svelte          # GameEngine 마운트 + HudOverlay
 │       └── +page.ts              # ssr = false
@@ -31,6 +32,9 @@ src/
 │   │   │   └── PartsSystem.ts    # 초기 스탯 계산(파츠 타입)
 │   │   ├── stages/
 │   │   │   └── TrainingPlanet.ts # 지형·충돌·발판 루트
+│   │   ├── shopSettings.ts       # 상점 설정 타입·검증·미사일 스킨 정의
+│   │   ├── shopGameCache.ts      # 게임 루프용 설정 스냅샷(prime/refresh)
+│   │   ├── mechEvolutionDoc.ts   # 상점용 진화 단계·메쉬 트리 문서 데이터
 │   │   ├── constants/
 │   │   │   └── GameConfig.ts     # 물리·대쉬·점수식 등
 │   │   ├── bridge/
@@ -39,6 +43,8 @@ src/
 │   │       └── DamageNumbers.ts
 │   ├── domain/
 │   │   └── types.ts
+│   ├── storage/
+│   │   └── shopIndexedDb.ts      # IndexedDB `bout-web` / 마이그레이션(구 localStorage)
 │   └── components/
 │       └── HUD/
 │           └── HudOverlay.svelte

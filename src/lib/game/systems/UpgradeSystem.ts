@@ -212,11 +212,24 @@ const ALL_UPGRADES: UpgradeCardDef[] = [
 	}
 ];
 
-/** 랜덤 3장 선택 (희귀도 가중치 적용) */
-export function getRandomCards(count = 3): UpgradeCardInfo[] {
+/** 정비소·설정 UI용 전체 카드 목록 */
+export function getAllCardsCatalog(): UpgradeCardInfo[] {
+	return ALL_UPGRADES.map((c) => ({
+		id: c.id,
+		name: c.name,
+		description: c.description,
+		emoji: c.emoji,
+		rarity: c.rarity
+	}));
+}
+
+/** 랜덤 선택 (희귀도 가중 + `favoredIds`에 추가 가중) */
+export function getRandomCards(count = 3, favoredIds: string[] = []): UpgradeCardInfo[] {
+	const favor = new Set(favoredIds.filter((id) => ALL_UPGRADES.some((c) => c.id === id)));
 	const pool: UpgradeCardDef[] = [];
 	for (const card of ALL_UPGRADES) {
-		const weight = card.rarity === 'epic' ? 1 : card.rarity === 'rare' ? 3 : 6;
+		let weight = card.rarity === 'epic' ? 1 : card.rarity === 'rare' ? 3 : 6;
+		if (favor.has(card.id)) weight += 10;
 		for (let i = 0; i < weight; i++) pool.push(card);
 	}
 	const seen = new Set<string>();

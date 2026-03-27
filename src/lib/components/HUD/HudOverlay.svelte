@@ -8,6 +8,21 @@
 		type UpgradeCardInfo
 	} from '$lib/game/systems/UpgradeSystem';
 	import { computeRunScore } from '$lib/game/constants/GameConfig';
+	import { appendRankRunRecord } from '$lib/storage/rankIndexedDb';
+	import type { MechBase } from '$lib/domain/types';
+
+	const MECH_BASES: MechBase[] = [
+		'hypersuit',
+		'azonas-v',
+		'geren',
+		'expressive',
+		'soldier'
+	];
+	function coerceMechBase(x: unknown): MechBase {
+		return typeof x === 'string' && (MECH_BASES as readonly string[]).includes(x)
+			? (x as MechBase)
+			: 'hypersuit';
+	}
 
 	// ── 미니맵 ──────────────────────────────────────────────────────────────────
 	let minimapCanvas: HTMLCanvasElement | undefined = $state(undefined);
@@ -483,6 +498,7 @@
 					scoreBoss?: number;
 					scoreLevel?: number;
 					scoreTime?: number;
+					mechBase?: unknown;
 			  }
 			| undefined;
 		const surv = Math.floor(d?.survivalTime ?? survivalSeconds);
@@ -511,6 +527,17 @@
 			scoreTime: sc.partTime,
 			waveBossCount: d?.bossCount ?? 0
 		};
+		void appendRankRunRecord({
+			mechBase: coerceMechBase(d?.mechBase),
+			scoreTotal: sc.total,
+			scoreBoss: sc.partBoss,
+			scoreLevel: sc.partLevel,
+			scoreTime: sc.partTime,
+			level: lv,
+			survivalTime: surv,
+			normalKills: norm,
+			bossCount: d?.bossCount ?? 0
+		});
 		gameOver = true;
 		pauseOpen = false;
 		EventBus.emit('game-pause-set', { paused: false });

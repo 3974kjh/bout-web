@@ -1,3 +1,5 @@
+import type { MechBase } from '$lib/domain/types';
+
 export const GRAVITY = -32;
 export const JUMP_FORCE = 13;
 /** Lv10부터 공중 2단 점프 */
@@ -36,6 +38,45 @@ export const KNOCKDOWN_MS = 1200;
 export const DASH_COOLDOWN = 3.0;   // 기본 쿨타임(초)
 export const DASH_SPEED    = 68;    // 대쉬 초기 속도 (units/s)
 export const DASH_DECEL    = 240;   // 감속도 (units/s²) — 약 0.28s 동안 약 8 유닛 이동
+
+/** true일 때 `expressive`·`soldier`는 GLTF 스키닝 캐릭터 로드. 다른 기체는 절차 메쉬만 사용. */
+export const PLAYER_USE_SKINNED_GLTF = true;
+
+export function playerUsesSkinnedGltfForBase(mechBase: MechBase): boolean {
+	return PLAYER_USE_SKINNED_GLTF && (mechBase === 'expressive' || mechBase === 'soldier');
+}
+
+/**
+ * 스키닝 GLTF — `static/models/*.glb`를 `/models/…`로 서빙(1순위), 실패 시 CDN.
+ * @see static/models/README.md
+ */
+export const PLAYER_GLTF_URLS: string[] = [
+	'/models/player.glb',
+	'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb'
+];
+
+export const SOLDIER_GLTF_URLS: string[] = [
+	'/models/soldier.glb',
+	'https://threejs.org/examples/models/gltf/Soldier.glb'
+];
+
+export function playerGltfUrlListForBase(mechBase: MechBase): string[] {
+	if (mechBase === 'soldier') return SOLDIER_GLTF_URLS;
+	return PLAYER_GLTF_URLS;
+}
+
+/** GLTF 정렬·스케일 (필요 시 기체별로 조정) */
+export function skinnedGltfLoadOptionsForBase(mechBase: MechBase): {
+	modelRotationY: number;
+	targetHeight: number;
+} {
+	/**
+	 * 절차 메쉬·익스프레시브: 얼굴 -Z — Player lookAt으로 -Z가 이동 방향.
+	 * Soldier.glb(three.js 예제)는 기본 방향이 이미 그 규약에 맞아 π를 주면 걷기 클립이 반대로 보임.
+	 */
+	if (mechBase === 'soldier') return { modelRotationY: 0, targetHeight: 2.85 };
+	return { modelRotationY: Math.PI, targetHeight: 2.85 };
+}
 
 // ── 게임 오버 점수 (정수 합산) ───────────────────────────────────────────────
 export type ScoreBossKind = 'bear' | 'wolf' | 'dragon' | 'tiger' | 'ironlord';

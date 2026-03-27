@@ -11,6 +11,8 @@ import { LevelSystem } from '../systems/LevelSystem';
 import { WaveSystem } from '../systems/WaveSystem';
 import { calculateStats } from '../systems/PartsSystem';
 import { applyUpgrade, getRandomCards } from '../systems/UpgradeSystem';
+import { missileColorForSkin } from '../shopSettings';
+import { getShopSettingsForGame, refreshShopSettingsForGame } from '../shopGameCache';
 import { TrainingPlanet } from '../stages/TrainingPlanet';
 import { DamageNumbers } from '../ui/DamageNumbers';
 import { EventBus } from '../bridge/EventBus';
@@ -71,6 +73,9 @@ export class GameEngine {
 	private platformCardSpawnAcc = 0;
 	private platformCardNextIn = 28 + Math.random() * 10;
 
+	private playerMissileColor = 0x00ccff;
+	private favoredCardIds: string[] = [];
+
 	// 보스 AOE: 고정 외곽 링 + 중심에서 바깥으로 채워지는 원, 타격 시 보스별 연출
 	private aoeEffects: Array<{
 		rim: THREE.Mesh;
@@ -104,7 +109,9 @@ export class GameEngine {
 	private container: HTMLElement;
 
 	// 핸들러 바인딩
-	private restartHandler = (): void => this.restart();
+	private restartHandler = (): void => {
+		void this.restart();
+	};
 	private resizeHandler  = (): void => this.onResize();
 	private bossDefeatedHandler = (): void => this.onBossDefeated();
 	private upgradeChosenHandler = (...args: unknown[]): void => {
@@ -188,9 +195,13 @@ export class GameEngine {
 
 		this.stage = new TrainingPlanet(this.scene);
 
+		const shop = getShopSettingsForGame();
+		this.playerMissileColor = missileColorForSkin(shop.missileSkinId);
+		this.favoredCardIds = [...shop.favoredCardIds];
+
 		const emptyParts: MechParts = { head: null, body: null, arm: null, leg: null, weapon: null };
-		const stats = calculateStats('hypersuit', emptyParts);
-		this.player = new Player(this.scene, new THREE.Vector3(0, 0, 20), stats);
+		const stats = calculateStats(shop.mechBase, emptyParts);
+		this.player = new Player(this.scene, new THREE.Vector3(0, 0, 20), stats, shop.mechBase);
 
 		this.monsters = [];
 		this.projectiles = [];
@@ -357,7 +368,7 @@ export class GameEngine {
 			const proj = new Projectile(
 				this.scene, origin, dir,
 				u.missileSpeed, u.missileDamage,
-				0x00ccff, true, u.piercingCount, u.missileScale, homingObj
+				this.playerMissileColor, true, u.piercingCount, u.missileScale, homingObj
 			);
 			this.playerProjectiles.push(proj);
 		}
@@ -551,7 +562,7 @@ export class GameEngine {
 			}
 			if (cache.tryCollect(pp)) {
 				this.isLevelUpPaused = true;
-				EventBus.emit('field-card-offer', { cards: getRandomCards(3) });
+				EventBus.emit('field-card-offer', { cards: getRandomCards(3, this.favoredCardIds) });
 				cache.dispose();
 				this.platformCardCaches.splice(i, 1);
 			}
@@ -574,7 +585,7 @@ export class GameEngine {
 
 	private triggerLevelUp(): void {
 		this.isLevelUpPaused = true;
-		const cards = getRandomCards(3);
+		const cards = getRandomCards(3, this.favoredCardIds);
 		this.player.setLevel(this.levelSystem.level); // 캐릭터 진화
 		EventBus.emit('level-up', { level: this.levelSystem.level, cards });
 	}
@@ -750,6 +761,7 @@ export class GameEngine {
 				survivalSeconds: survivalSec,
 				bossKills: bosses
 			});
+			const shop = getShopSettingsForGame();
 			EventBus.emit('game-over', {
 				survivalTime: survivalSec,
 				bossCount: this.waveSystem.bossCount,
@@ -759,7 +771,8 @@ export class GameEngine {
 				scoreTotal: score.total,
 				scoreBoss: score.partBoss,
 				scoreLevel: score.partLevel,
-				scoreTime: score.partTime
+				scoreTime: score.partTime,
+				mechBase: shop.mechBase
 			});
 		}
 	}
@@ -1229,7 +1242,8 @@ export class GameEngine {
 
 	// ─── 재시작 ──────────────────────────────────────────────────────────────────
 
-	private restart(): void {
+	private async restart(): Promise<void> {
+		await refreshShopSettingsForGame();
 		EventBus.off('boss-aoe-request', this.onBossAoeRequest);
 		for (const p of this.projectiles) p.dispose(this.scene);
 		for (const p of this.playerProjectiles) p.dispose(this.scene);

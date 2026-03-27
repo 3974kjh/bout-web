@@ -7,6 +7,8 @@
 	let engine: { destroy: () => void } | null = $state(null);
 
 	onMount(async () => {
+		const { primeShopSettingsForGame } = await import('$lib/game/shopGameCache');
+		await primeShopSettingsForGame();
 		const { GameEngine } = await import('$lib/game/core/GameEngine');
 		engine = new GameEngine(gameContainer!);
 	});

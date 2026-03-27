@@ -1,5 +1,14 @@
 import * as THREE from 'three';
-import { createMechModel, type MechParts3D, MECH_BODY_Y, createEvolvedModel, formForLevel } from './MechModel';
+import type { MechBase } from '$lib/domain/types';
+import { type MechParts3D, createEvolvedModel, formForLevel } from './MechModel';
+import {
+	deepDisposePlayerGraph,
+	fadeSkinnedBaseClip,
+	loadSkinnedPlayerWithFallback,
+	pickSkinnedClip,
+	skinnedFadeCrossDuration
+} from './playerSkinned';
+import { updateSkinnedPlayerEvolution } from './playerSkinnedEvolution';
 import { EventBus } from '../bridge/EventBus';
 import type { InputManager } from '../core/InputManager';
 import type { MechStats, PlayerState, StageQuery, PlayerUpgrades } from '$lib/domain/types';
@@ -14,7 +23,10 @@ import {
 	WING_GLIDE_MIN_FORM,
 	GLIDE_HOLD_TO_START_MS,
 	GLIDE_MAX_DURATION_MS,
-	DOUBLE_JUMP_FORCE_MULT
+	DOUBLE_JUMP_FORCE_MULT,
+	playerGltfUrlListForBase,
+	playerUsesSkinnedGltfForBase,
+	skinnedGltfLoadOptionsForBase
 } from '../constants/GameConfig';
 
 /** 기본 진화 모델 스케일 */
@@ -72,6 +84,8 @@ export class Player {
 	private headHudCanvas!: HTMLCanvasElement;
 	private moveVelocity = new THREE.Vector3();
 	private dashVelocity = new THREE.Vector3(); // 대쉬 속도 벡터 (감속하며 소멸)
+	/** WASD 입력 여부 — 관성 이동과 무관하게 걷기 애니 on/off */
+	private moveIntent = false;
 
 	private jumpsUsed = 0;
 	private glideHoldMs = 0;
@@ -79,10 +93,22 @@ export class Player {
 	private glideAnchorY = 0;
 	private glideRemainingMs = 0;
 
-	constructor(scene: THREE.Scene, pos: THREE.Vector3, stats: MechStats) {
+	private readonly mechBase: MechBase;
+
+	/** GLTF 스키닝 모드 — 성공 시 Form별 절차 메쉬 스왑 생략 */
+	private skinned: {
+		mixer: THREE.AnimationMixer;
+		actions: Record<string, THREE.AnimationAction>;
+		baseClip: THREE.AnimationAction | null;
+		disposePayload: () => void;
+	} | null = null;
+	private gltfLoadEpoch = 0;
+
+	constructor(scene: THREE.Scene, pos: THREE.Vector3, stats: MechStats, mechBase: MechBase) {
 		this.scene = scene;
 		this.stats = { ...stats };
-		const m = createEvolvedModel(0, MODEL_SCALE);
+		this.mechBase = mechBase;
+		const m = createEvolvedModel(0, MODEL_SCALE, mechBase);
 		this.group = m.group;
 		this.parts = m.parts;
 		this.group.position.copy(pos);
@@ -91,6 +117,7 @@ export class Player {
 		this.currentForm = 0;
 		this.createHitCircle(scene, pos);
 		this.createHeadHud(scene, pos);
+		if (playerUsesSkinnedGltfForBase(this.mechBase)) void this.beginSkinnedLoad();
 	}
 
 	private createHeadHud(scene: THREE.Scene, pos: THREE.Vector3): void {
@@ -173,6 +200,81 @@ export class Player {
 		scene.add(this.hitCircle);
 	}
 
+	private beginSkinnedLoad(): void {
+		const epoch = ++this.gltfLoadEpoch;
+		const urls = playerGltfUrlListForBase(this.mechBase);
+		const gltfOpts = skinnedGltfLoadOptionsForBase(this.mechBase);
+		void loadSkinnedPlayerWithFallback(urls, gltfOpts)
+			.then((payload) => {
+				if (epoch !== this.gltfLoadEpoch) {
+					payload.dispose();
+					return;
+				}
+				const pos = this.group.position.clone();
+				const scl = this.group.scale.clone();
+				this.scene.remove(this.group);
+				if (this.skinned) {
+					this.skinned.disposePayload();
+					this.skinned = null;
+				} else {
+					deepDisposePlayerGraph(this.group);
+				}
+				this.group = payload.root;
+				this.parts = payload.parts;
+				this.group.position.copy(pos);
+				this.group.scale.copy(scl);
+				this.scene.add(this.group);
+				const idle = pickSkinnedClip(payload.actions, ['Idle', 'Standing', 'idle'], [
+					'idle',
+					'stand',
+					'tpose'
+				]);
+				this.skinned = {
+					mixer: payload.mixer,
+					actions: payload.actions,
+					baseClip: idle ?? null,
+					disposePayload: payload.dispose
+				};
+				updateSkinnedPlayerEvolution(this.group, this.currentForm, this.mechBase, this.currentLevel);
+			})
+			.catch(() => { /* 절차 메쉬 유지 */ });
+	}
+
+	private syncSkinnedBaseClip(): void {
+		if (!this.skinned) return;
+		if (this.flashTimer > 0) return;
+
+		const { actions } = this.skinned;
+		let next = pickSkinnedClip(actions, ['Idle', 'Standing', 'idle'], ['idle', 'stand', 'tpose']);
+
+		if (this.isGliding && this.currentForm >= WING_GLIDE_MIN_FORM) {
+			next =
+				pickSkinnedClip(actions, ['Standing', 'Idle', 'Walking'], ['idle', 'walk', 'stand']) ?? next;
+		} else if (!this.isOnGround) {
+			if (this.velocityY > 0.35) {
+				next =
+					pickSkinnedClip(actions, ['Jump'], ['jump', 'fall', 'air']) ??
+					pickSkinnedClip(actions, ['Run'], ['run']) ??
+					next;
+			} else {
+				next =
+					pickSkinnedClip(actions, ['Fall', 'Run'], ['fall', 'falling', 'run', 'air']) ??
+					pickSkinnedClip(actions, ['Run', 'Walking'], ['run', 'walk']) ??
+					next;
+			}
+		} else if (this.moveIntent && this.isOnGround && this.state !== 'jumping') {
+			next =
+				pickSkinnedClip(actions, ['Walking', 'Running', 'Run'], ['walk', 'jog', 'run']) ?? next;
+		}
+
+		const prev = this.skinned.baseClip;
+		if (prev !== next) {
+			const dur = skinnedFadeCrossDuration(prev, next);
+			fadeSkinnedBaseClip(prev, next, dur);
+			this.skinned.baseClip = next;
+		}
+	}
+
 	// ── 레벨 진화: form이 바뀌면 모델 전체 교체 ──────────────────────────────
 
 	getCurrentLevel(): number { return this.currentLevel; }
@@ -196,6 +298,9 @@ export class Player {
 			this.rebuildModel(newForm);
 			this.hitFlashTimer = -200; // 하얀 플래시
 		}
+		if (this.skinned) {
+			updateSkinnedPlayerEvolution(this.group, this.currentForm, this.mechBase, this.currentLevel);
+		}
 	}
 
 	/** 레벨업 1회당 최대 HP 소폭 증가 + 증가분만큼 현재 HP 보정 */
@@ -209,12 +314,12 @@ export class Player {
 	}
 
 	private rebuildModel(form: number): void {
+		if (this.skinned) return;
 		const pos = this.group.position.clone();
 		const scl = this.group.scale.clone();
-		// 기존 모델 제거
 		this.scene.remove(this.group);
-		// 새 모델 생성
-		const m = createEvolvedModel(form, MODEL_SCALE);
+		deepDisposePlayerGraph(this.group);
+		const m = createEvolvedModel(form, MODEL_SCALE, this.mechBase);
 		this.group = m.group;
 		this.parts = m.parts;
 		this.group.position.copy(pos);
@@ -270,6 +375,21 @@ export class Player {
 	/** 미사일 발사 플래시 (총 쏘는 포즈 트리거) */
 	triggerFireFlash(): void {
 		this.flashTimer = 140;
+		if (this.skinned) {
+			const punch = pickSkinnedClip(this.skinned.actions, ['Punch', 'Shoot', 'Wave'], [
+				'shoot',
+				'fire',
+				'punch',
+				'aim',
+				'attack'
+			]);
+			if (punch) {
+				punch.stop();
+				punch.setLoop(THREE.LoopOnce, 1);
+				punch.clampWhenFinished = true;
+				punch.reset().setEffectiveWeight(1).fadeIn(0.1).play();
+			}
+		}
 	}
 
 	// ── 메인 업데이트 ─────────────────────────────────────────────────────────
@@ -323,7 +443,7 @@ export class Player {
 
 		if (this.flashTimer > 0) {
 			this.flashTimer -= ms;
-			if (this.flashTimer <= 0) {
+			if (this.flashTimer <= 0 && !this.skinned) {
 				this.parts.accentMat.emissive.setHex(0x000000);
 				this.parts.accentMat.emissiveIntensity = 0;
 			}
@@ -331,17 +451,25 @@ export class Player {
 
 		// 피격 발광 (빨간 → 정상)
 		if (this.hitFlashTimer > 0) {
+			const prevHit = this.hitFlashTimer;
 			this.hitFlashTimer -= ms;
 			const t = Math.max(0, this.hitFlashTimer / 300);
 			this.group.traverse((obj) => {
-				if (!(obj instanceof THREE.Mesh)) return;
-				const mat = obj.material as THREE.MeshStandardMaterial;
-				if (mat?.isMeshStandardMaterial) {
-					mat.emissive.setRGB(t * 0.9, 0, 0);
+				if (!(obj instanceof THREE.Mesh) && !(obj instanceof THREE.SkinnedMesh)) return;
+				const raw = obj.material;
+				const mats = Array.isArray(raw) ? raw : [raw];
+				for (const mat of mats) {
+					if (
+						mat instanceof THREE.MeshStandardMaterial ||
+						mat instanceof THREE.MeshPhysicalMaterial ||
+						mat instanceof THREE.MeshPhongMaterial
+					) {
+						mat.emissive.setRGB(t * 0.9, 0, 0);
+					}
 				}
 			});
-			if (this.hitFlashTimer <= 0) {
-				// emissive 자연 복구 (모델 자체 색상 유지됨)
+			if (prevHit > 0 && this.hitFlashTimer <= 0 && this.skinned) {
+				updateSkinnedPlayerEvolution(this.group, this.currentForm, this.mechBase, this.currentLevel);
 			}
 		}
 
@@ -350,20 +478,24 @@ export class Player {
 			this.hitFlashTimer += ms;
 			const t = Math.min(1, Math.abs(this.hitFlashTimer) / 200);
 			this.group.traverse((obj) => {
-				if (!(obj instanceof THREE.Mesh)) return;
-				const mat = obj.material as THREE.MeshStandardMaterial;
-				if (mat?.isMeshStandardMaterial) {
-					mat.emissive.setRGB(t * 1.5, t * 1.5, t * 1.5);
+				if (!(obj instanceof THREE.Mesh) && !(obj instanceof THREE.SkinnedMesh)) return;
+				const raw = obj.material;
+				const mats = Array.isArray(raw) ? raw : [raw];
+				for (const mat of mats) {
+					if (
+						mat instanceof THREE.MeshStandardMaterial ||
+						mat instanceof THREE.MeshPhysicalMaterial ||
+						mat instanceof THREE.MeshPhongMaterial
+					) {
+						mat.emissive.setRGB(t * 1.5, t * 1.5, t * 1.5);
+					}
 				}
 			});
 			if (this.hitFlashTimer >= 0) {
 				this.hitFlashTimer = 0;
-				// 머티리얼 emissive 정상화 (각 메시가 자체 emissiveIntensity 보유)
-				this.group.traverse((obj) => {
-					if (!(obj instanceof THREE.Mesh)) return;
-					const mat = obj.material as THREE.MeshStandardMaterial;
-					if (mat?.isMeshStandardMaterial) mat.emissiveIntensity = mat.emissiveIntensity; // no-op normalize
-				});
+				if (this.skinned) {
+					updateSkinnedPlayerEvolution(this.group, this.currentForm, this.mechBase, this.currentLevel);
+				}
 			}
 		}
 	}
@@ -378,6 +510,7 @@ export class Player {
 		if (input.isDown('KeyD') || input.isDown('ArrowRight')) dx = 1;
 
 		const moving = dx !== 0 || dz !== 0;
+		this.moveIntent = moving;
 		const targetSpd = this.stats.speed * this.upgrades.moveSpeedMult;
 		const targetDir = moving ? new THREE.Vector3(dx, 0, dz).normalize() : new THREE.Vector3();
 		const targetVel = targetDir.clone().multiplyScalar(targetSpd);
@@ -385,6 +518,12 @@ export class Player {
 		// 스무스 가속/감속 (lerp)
 		const lerpAlpha = moving ? 0.20 : 0.14;
 		this.moveVelocity.lerp(targetVel, lerpAlpha);
+
+		if (moving) {
+			if (this.state !== 'jumping') this.state = 'walking';
+		} else if (this.state === 'walking' && this.isOnGround) {
+			this.state = 'idle';
+		}
 
 		if (this.moveVelocity.lengthSq() > 0.01) {
 			const from = this.group.position;
@@ -399,9 +538,6 @@ export class Player {
 			const facing = this.moveVelocity.clone().setY(0).normalize();
 			this.facing.copy(facing);
 			this.group.lookAt(from.x - facing.x, from.y, from.z - facing.z);
-			if (this.state !== 'jumping') this.state = 'walking';
-		} else {
-			if (this.state === 'walking') this.state = 'idle';
 		}
 
 		// ── 대쉬 속도 적용 (감속하며 소멸) ────────────────────────────────────
@@ -551,6 +687,12 @@ export class Player {
 	// ── 애니메이션 ────────────────────────────────────────────────────────────
 
 	private animate(dt: number): void {
+		if (this.skinned) {
+			this.skinned.mixer.update(dt);
+			this.syncSkinnedBaseClip();
+			return;
+		}
+
 		const p = this.parts;
 
 		if (this.isGliding && this.currentForm >= WING_GLIDE_MIN_FORM) {
@@ -565,7 +707,7 @@ export class Player {
 			p.rightLeg.rotation.x += (0.55 - p.rightLeg.rotation.x) * 0.18;
 			p.leftLeg.rotation.z  += (0.08 - p.leftLeg.rotation.z)  * 0.18;
 			p.rightLeg.rotation.z += (-0.08 - p.rightLeg.rotation.z) * 0.18;
-		} else if (this.state === 'walking') {
+		} else if (this.moveIntent && this.isOnGround && this.state !== 'jumping') {
 			const cycleSpeed = 10;
 			this.walkCycle += dt * cycleSpeed;
 			const s = Math.sin(this.walkCycle);
@@ -618,7 +760,14 @@ export class Player {
 	}
 
 	dispose(): void {
+		this.gltfLoadEpoch++;
 		this.scene.remove(this.group);
+		if (this.skinned) {
+			this.skinned.disposePayload();
+			this.skinned = null;
+		} else {
+			deepDisposePlayerGraph(this.group);
+		}
 		if (this.hitCircle) this.scene.remove(this.hitCircle);
 		if (this.headHud) this.scene.remove(this.headHud);
 	}
@@ -640,7 +789,19 @@ export class Player {
 		this.moveVelocity.set(0, 0, 0);
 		if (this.hitCircle) this.scene.remove(this.hitCircle);
 		if (this.headHud) this.scene.remove(this.headHud);
-		this.rebuildModel(0);
+		this.gltfLoadEpoch++;
+		this.scene.remove(this.group);
+		if (this.skinned) {
+			this.skinned.disposePayload();
+			this.skinned = null;
+		} else {
+			deepDisposePlayerGraph(this.group);
+		}
+		const m0 = createEvolvedModel(0, MODEL_SCALE, this.mechBase);
+		this.group = m0.group;
+		this.parts = m0.parts;
+		this.currentForm = 0;
+		this.scene.add(this.group);
 		this.group.position.copy(pos);
 		this.group.scale.setScalar(scaleForLevel(1));
 		this.createHitCircle(this.scene, pos);
@@ -653,5 +814,6 @@ export class Player {
 			moveSpeedMult: 1.0, maxHpMult: 1.0, pendingHealPct: 0,
 			dashCooldownMult: 1.0
 		};
+		if (playerUsesSkinnedGltfForBase(this.mechBase)) void this.beginSkinnedLoad();
 	}
 }

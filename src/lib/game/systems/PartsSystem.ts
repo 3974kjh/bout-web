@@ -27,6 +27,26 @@ const BASE_STATS: Record<MechBase, MechStats> = {
 		speed: 7,
 		transformGauge: 0,
 		maxTransformGauge: 100
+	},
+	/** GLTF 스키닝 캐릭터 — 스탯은 하이퍼슈트와 동일(밸런스형) */
+	expressive: {
+		hp: 150,
+		maxHp: 150,
+		attack: 20,
+		defense: 12,
+		speed: 8,
+		transformGauge: 0,
+		maxTransformGauge: 100
+	},
+	/** three.js Soldier.glb (Mixamo) — 스탯은 아조나스 V에 가깝게 */
+	soldier: {
+		hp: 125,
+		maxHp: 125,
+		attack: 22,
+		defense: 10,
+		speed: 9,
+		transformGauge: 0,
+		maxTransformGauge: 100
 	}
 };
 

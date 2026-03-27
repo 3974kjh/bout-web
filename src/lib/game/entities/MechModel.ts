@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { MechBase } from '$lib/domain/types';
 
 /**
  * MechParts3D: leftArm / rightArm / leftLeg / rightLeg 는 피벗 Group.
@@ -652,140 +653,41 @@ const FORM_STYLE = [
 	{ body: 0xaa0000, accent: 0xff3300, emissive: 1.20, glowInt: 7.0  },
 ];
 
-export function createEvolvedModel(form: number, s: number): { group: THREE.Group; parts: MechParts3D } {
-	const f = Math.min(form, 8);
+export { createEvolvedModel } from './EvolvedMechByBase';
+
+/** 발 밑면이 y=0이 되도록 루트 자식들만 수직 이동 (정비소 미리보기·기체 실루엣 보정용) */
+export function normalizeMechGroupGround(group: THREE.Object3D): void {
+	group.updateMatrixWorld(true);
+	const bbox = new THREE.Box3().setFromObject(group);
+	const minY = bbox.min.y;
+	if (Math.abs(minY) > 0.01) {
+		for (const child of [...group.children]) {
+			child.position.y -= minY;
+		}
+	}
+}
+
+const SHOP_VARIANT_DECO = 'shopVariantDeco';
+
+/** 진화 메쉬가 기체별로 이미 분기됨 — 정비소에서 추가 메쉬는 없음(구 호환용 정리만). */
+export function applyShopMechVariant(group: THREE.Group, _base: MechBase, _s: number, _form: number): void {
+	const prev = group.getObjectByName(SHOP_VARIANT_DECO);
+	if (prev) group.remove(prev);
+	group.scale.set(1, 1, 1);
+}
+
+/** UI 배지용 진화 단계 색 (form 0~8) */
+export function formStyleColors(form: number): { body: number; accent: number } {
+	const f = Math.min(Math.max(Math.floor(form), 0), 8);
 	const st = FORM_STYLE[f];
-	const group = new THREE.Group();
-	const bodyMat = new THREE.MeshStandardMaterial({ color: st.body, roughness: 0.50, metalness: 0.65, emissive: new THREE.Color(st.body), emissiveIntensity: st.emissive });
-	const accentMat = new THREE.MeshStandardMaterial({ color: st.accent, roughness: 0.25, metalness: 0.80, emissive: new THREE.Color(st.accent), emissiveIntensity: st.glowInt });
-	const head = new THREE.Group();
-	const leftArm  = new THREE.Group();
-	const rightArm = new THREE.Group();
-	const leftLeg  = new THREE.Group();
-	const rightLeg = new THREE.Group();
+	return { body: st.body, accent: st.accent };
+}
 
-	// ── form 0: 단순한 큐브 ──────────────────────────────────────────────────
-	if (f === 0) {
-		const cube = new THREE.Mesh(new THREE.BoxGeometry(0.80 * s, 1.0 * s, 0.80 * s), bodyMat);
-		cube.position.y = 0.50 * s; cube.castShadow = true; group.add(cube);
-		[head, leftArm, rightArm, leftLeg, rightLeg].forEach(g => group.add(g));
-		return { group, parts: { head, body: cube, leftArm, rightArm, leftLeg, rightLeg, bodyMat, accentMat, bodyTargetY: 0.50 * s } };
-	}
-
-	// ── form 1: 큐브 + 조그만 머리 + 팔 돌기 ────────────────────────────────
-	if (f === 1) {
-		const cube = new THREE.Mesh(new THREE.BoxGeometry(0.80 * s, 0.90 * s, 0.80 * s), bodyMat);
-		cube.position.y = 0.55 * s; cube.castShadow = true; group.add(cube);
-		const hm = new THREE.Mesh(new THREE.BoxGeometry(0.30 * s, 0.22 * s, 0.30 * s), bodyMat.clone());
-		head.position.y = 1.06 * s; head.add(hm); group.add(head);
-		for (const [side, ag] of [[-1, leftArm], [1, rightArm]] as [number, THREE.Group][]) {
-			ag.position.set(side * 0.45 * s, 0.68 * s, 0);
-			const st2 = new THREE.Mesh(new THREE.BoxGeometry(0.18 * s, 0.18 * s, 0.18 * s), bodyMat.clone());
-			st2.castShadow = true; ag.add(st2); group.add(ag);
-		}
-		group.add(leftLeg); group.add(rightLeg);
-		return { group, parts: { head, body: cube, leftArm, rightArm, leftLeg, rightLeg, bodyMat, accentMat, bodyTargetY: 0.55 * s } };
-	}
-
-	// ── form 2~8 공통 바디 ───────────────────────────────────────────────────
-	const body = new THREE.Mesh(new THREE.BoxGeometry(0.78 * s, 0.60 * s, 0.50 * s), bodyMat);
-	body.position.y = MECH_BODY_Y * s; body.castShadow = true; group.add(body);
-
-	// 머리
-	head.position.y = 2.40 * s; group.add(head);
-	const hW = f >= 4 ? 0.40 * s : 0.32 * s;
-	const helm2 = new THREE.Mesh(new THREE.BoxGeometry(hW, hW * 0.95, hW * 0.95), bodyMat.clone());
-	helm2.castShadow = true; head.add(helm2);
-	if (f >= 3) {
-		const vm = new THREE.MeshStandardMaterial({ color: st.accent, emissive: new THREE.Color(st.accent), emissiveIntensity: Math.max(1.5, st.glowInt * 0.55), roughness: 0.04 });
-		const vi = new THREE.Mesh(new THREE.BoxGeometry(0.24 * s, 0.07 * s, 0.06 * s), vm);
-		vi.position.set(0, -0.02 * s, -hW * 0.52); head.add(vi);
-	}
-	if (f >= 6) {
-		const gm = new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: new THREE.Color(0xffcc00), emissiveIntensity: 0.7, roughness: 0.2, metalness: 0.85 });
-		for (const sx of [-1, 1]) {
-			const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06 * s, 0.36 * s, 0.04 * s), gm.clone());
-			fin.position.set(sx * 0.10 * s, 0.30 * s, -hW * 0.42); fin.rotation.z = sx * 0.40; head.add(fin);
-		}
-	}
-	if (f >= 4) { const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.10 * s, 0.13 * s, 0.22 * s, 7), bodyMat.clone()); neck.position.y = 2.14 * s; group.add(neck); }
-	if (f >= 4) { const waist = new THREE.Mesh(new THREE.BoxGeometry(0.58 * s, 0.18 * s, 0.44 * s), bodyMat.clone()); waist.position.y = 1.28 * s; group.add(waist); }
-	if (f >= 5) {
-		const wm = new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.42, metalness: 0.52 });
-		const cp = new THREE.Mesh(new THREE.BoxGeometry(0.50 * s, 0.50 * s, 0.08 * s), wm);
-		cp.position.set(0, MECH_BODY_Y * s + 0.04 * s, -0.27 * s); group.add(cp);
-		const ht = new THREE.Mesh(new THREE.BoxGeometry(0.18 * s, 0.16 * s, 0.04 * s),
-			new THREE.MeshStandardMaterial({ color: st.accent, emissive: new THREE.Color(st.accent), emissiveIntensity: 0.9, roughness: 0.12 }));
-		ht.position.set(0, MECH_BODY_Y * s + 0.04 * s, -0.29 * s); group.add(ht);
-	}
-
-	// 팔
-	const aLen = f <= 3 ? 0.40 : f <= 5 ? 0.58 : 0.72;
-	const aW = f <= 3 ? 0.14 : 0.18;
-	for (const [side, ag] of [[-1, leftArm], [1, rightArm]] as [number, THREE.Group][]) {
-		ag.position.set(side * 0.46 * s, MECH_BODY_Y * s, 0); group.add(ag);
-		const up = new THREE.Mesh(new THREE.BoxGeometry(aW * s, aLen * s, aW * s), bodyMat.clone());
-		up.position.y = -(aLen / 2) * s; up.castShadow = true; ag.add(up);
-		if (f >= 5) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.32 * s, 0.22 * s, 0.26 * s), accentMat.clone()); sp.position.y = -0.06 * s; ag.add(sp); }
-		if (f >= 4) {
-			const fr = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.26 * s, 0.14 * s), bodyMat.clone());
-			fr.position.y = -(aLen + 0.13) * s; ag.add(fr);
-			if (f >= 5) {
-				const fist2 = new THREE.Mesh(new THREE.BoxGeometry(0.16 * s, 0.16 * s, 0.20 * s), accentMat.clone());
-				fist2.position.set(0, -(aLen + 0.29) * s, -0.02 * s); ag.add(fist2);
-			}
-		}
-	}
-
-	// 다리
-	if (f >= 3) {
-		const lLen = f === 3 ? 0.28 : f === 4 ? 0.55 : f <= 6 ? 0.80 : 0.92;
-		for (const [side, lg] of [[-1, leftLeg], [1, rightLeg]] as [number, THREE.Group][]) {
-			lg.position.set(side * 0.18 * s, (1.15 - lLen * 0.5) * s, 0); group.add(lg);
-			const th = new THREE.Mesh(new THREE.BoxGeometry(0.20 * s, lLen * s, 0.20 * s), bodyMat.clone());
-			th.position.y = -(lLen / 2) * s; th.castShadow = true; lg.add(th);
-			if (f >= 6) { const kn = new THREE.Mesh(new THREE.BoxGeometry(0.24 * s, 0.14 * s, 0.22 * s), accentMat.clone()); kn.position.set(0, -(lLen * 0.38) * s, -0.06 * s); lg.add(kn); }
-			if (f >= 5) { const ft = new THREE.Mesh(new THREE.BoxGeometry(0.22 * s, 0.12 * s, 0.28 * s), bodyMat.clone()); ft.position.set(0, -(lLen + 0.04) * s, -0.04 * s); lg.add(ft); }
-		}
-	} else { group.add(leftLeg); group.add(rightLeg); }
-
-	// 날개 (form 7+)
-	if (f >= 7) {
-		const wm2 = new THREE.MeshStandardMaterial({ color: st.accent, roughness: 0.25, metalness: 0.88, emissive: new THREE.Color(st.accent), emissiveIntensity: 0.55 });
-		for (const sx of [-1, 1]) {
-			for (let wi = 0; wi < 2; wi++) {
-				const wing = new THREE.Mesh(new THREE.BoxGeometry(0.09 * s, (0.85 - wi * 0.2) * s, (0.55 + wi * 0.1) * s), wm2.clone());
-				wing.position.set(sx * (0.52 + wi * 0.12) * s, (MECH_BODY_Y + 0.1 - wi * 0.25) * s, (0.22 + wi * 0.08) * s);
-				wing.rotation.z = sx * (0.32 + wi * 0.18); group.add(wing);
-			}
-		}
-	}
-
-	// 숄더 캐논 (form 8)
-	if (f >= 8) {
-		const dm = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.55, metalness: 0.85 });
-		const bm = new THREE.MeshStandardMaterial({ color: st.accent, emissive: new THREE.Color(st.accent), emissiveIntensity: 2.5, roughness: 0.06 });
-		for (const sx of [-1, 1]) {
-			const mn = new THREE.Mesh(new THREE.BoxGeometry(0.16 * s, 0.14 * s, 0.40 * s), dm.clone());
-			mn.position.set(sx * 0.62 * s, (MECH_BODY_Y + 0.25) * s, -0.05 * s); group.add(mn);
-			const br = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * s, 0.06 * s, 0.50 * s, 6), bm.clone());
-			br.rotation.x = -Math.PI / 2; br.position.set(sx * 0.62 * s, (MECH_BODY_Y + 0.25) * s, -0.30 * s); group.add(br);
-		}
-	}
-
-	// ── 발 좌표 보정: 모든 메시의 bbox minY를 0으로 맞춤 ────────────────────
-	{
-		group.updateMatrixWorld(true);
-		const bbox = new THREE.Box3().setFromObject(group);
-		const minY = bbox.min.y;
-		if (Math.abs(minY) > 0.01) {
-			for (const child of [...group.children]) {
-				child.position.y -= minY;
-			}
-		}
-	}
-
-	return { group, parts: { head, body, leftArm, rightArm, leftLeg, rightLeg, bodyMat, accentMat, bodyTargetY: body.position.y } };
+/** 스키닝 플레이어 외장·발광용 (form 0~8) */
+export function formEvolutionEmissive(form: number): { bodyEmissive: number; accentGlow: number } {
+	const f = Math.min(Math.max(Math.floor(form), 0), 8);
+	const st = FORM_STYLE[f];
+	return { bodyEmissive: st.emissive, accentGlow: st.glowInt };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
