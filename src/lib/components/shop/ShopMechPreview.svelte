@@ -105,7 +105,7 @@
 
 		if (mechBase === 'expressive' || mechBase === 'soldier') {
 			const urls = playerGltfUrlListForBase(mechBase);
-			const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase);
+			const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase, 'preview');
 			void loadSkinnedPlayerWithFallback(urls, gltfOpts)
 				.then((payload) => {
 					if (!alive || !host) {

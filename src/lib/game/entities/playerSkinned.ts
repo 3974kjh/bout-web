@@ -99,6 +99,18 @@ export function pickSkinnedClip(
 	return pickSkinnedAction(actions, exact) ?? pickSkinnedActionBySubstring(actions, fuzzy);
 }
 
+/**
+ * 인게임 이동 클립만 역재생(다리 스윙 방향 반전). 점프·낙하·대기는 제외.
+ */
+export function skinnedLocomotionTimeScale(clipName: string, reverse: boolean): number {
+	if (!reverse) return 1;
+	const n = clipName.toLowerCase();
+	if (n.includes('idle') || n.includes('stand') || n.includes('tpose')) return 1;
+	if (n.includes('fall') || n.includes('jump') || n.includes('air')) return 1;
+	if (n.includes('walk') || n.includes('jog') || n.includes('run')) return -1;
+	return 1;
+}
+
 /** 걷기→대기는 짧게, 나머지는 부드럽게 */
 export function skinnedFadeCrossDuration(
 	prev: THREE.AnimationAction | null,
@@ -321,8 +333,20 @@ export async function loadSkinnedPlayerWithFallback(
 export function fadeSkinnedBaseClip(
 	prev: THREE.AnimationAction | null,
 	next: THREE.AnimationAction | null,
-	duration: number
+	duration: number,
+	opts?: { reverseLocomotion?: boolean }
 ): void {
+	const rev = opts?.reverseLocomotion === true;
 	if (prev && prev !== next) prev.fadeOut(duration);
-	if (next) next.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(duration).play();
+	if (next) {
+		const clip = next.getClip();
+		const scale = skinnedLocomotionTimeScale(clip.name, rev);
+		next.reset();
+		if (scale < 0 && clip.duration > 1e-6) {
+			next.time = clip.duration;
+		} else {
+			next.time = 0;
+		}
+		next.setEffectiveTimeScale(scale).setEffectiveWeight(1).fadeIn(duration).play();
+	}
 }

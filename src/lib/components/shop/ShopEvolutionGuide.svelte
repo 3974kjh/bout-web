@@ -118,7 +118,7 @@
 
 		if (mechBase === 'expressive' || mechBase === 'soldier') {
 			const gltfUrls = playerGltfUrlListForBase(mechBase);
-			const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase);
+			const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase, 'preview');
 			void (async () => {
 				try {
 					const payloads = await Promise.all(

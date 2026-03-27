@@ -332,7 +332,7 @@
 
 			if (mechBase === 'expressive' || mechBase === 'soldier') {
 				const urls = playerGltfUrlListForBase(mechBase);
-				const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase);
+				const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase, 'preview');
 				return loadSkinnedPlayerWithFallback(urls, gltfOpts).then((payload) => {
 					if (!alive) {
 						payload.dispose();

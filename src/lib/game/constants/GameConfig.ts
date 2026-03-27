@@ -65,15 +65,25 @@ export function playerGltfUrlListForBase(mechBase: MechBase): string[] {
 	return PLAYER_GLTF_URLS;
 }
 
-/** GLTF 정렬·스케일 (필요 시 기체별로 조정) */
-export function skinnedGltfLoadOptionsForBase(mechBase: MechBase): {
+/** 인게임 Player vs 정비소·랭킹·HUD 등 프리뷰 — `modelRotationY`가 서로 반대 */
+export type SkinnedGltfLoadContext = 'gameplay' | 'preview';
+
+/** GLTF 정렬·스케일 (필요 시 기체별·컨텍스트별로 조정) */
+export function skinnedGltfLoadOptionsForBase(
+	mechBase: MechBase,
+	context: SkinnedGltfLoadContext = 'gameplay'
+): {
 	modelRotationY: number;
 	targetHeight: number;
 } {
 	/**
-	 * 절차 메쉬·익스프레시브: 얼굴 -Z — Player lookAt으로 -Z가 이동 방향.
-	 * Soldier.glb(three.js 예제)는 기본 방향이 이미 그 규약에 맞아 π를 주면 걷기 클립이 반대로 보임.
+	 * gameplay: 필드 기준. 솔저는 π, 익스프레시브는 0.
+	 * preview: 정비소·랭킹·HUD에서 보이는 방향을 맞추기 위해 위와 반대(솔저 0 / 익스프레시브 π).
 	 */
+	if (context === 'gameplay') {
+		if (mechBase === 'soldier') return { modelRotationY: Math.PI, targetHeight: 2.85 };
+		return { modelRotationY: 0, targetHeight: 2.85 };
+	}
 	if (mechBase === 'soldier') return { modelRotationY: 0, targetHeight: 2.85 };
 	return { modelRotationY: Math.PI, targetHeight: 2.85 };
 }

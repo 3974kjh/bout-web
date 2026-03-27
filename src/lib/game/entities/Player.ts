@@ -208,7 +208,7 @@ export class Player {
 	private beginSkinnedLoad(): void {
 		const epoch = ++this.gltfLoadEpoch;
 		const urls = playerGltfUrlListForBase(this.mechBase);
-		const gltfOpts = skinnedGltfLoadOptionsForBase(this.mechBase);
+		const gltfOpts = skinnedGltfLoadOptionsForBase(this.mechBase, 'gameplay');
 		void loadSkinnedPlayerWithFallback(urls, gltfOpts)
 			.then((payload) => {
 				if (epoch !== this.gltfLoadEpoch) {
@@ -273,7 +273,7 @@ export class Player {
 		const prev = this.skinned.baseClip;
 		if (prev !== next) {
 			const dur = skinnedFadeCrossDuration(prev, next);
-			fadeSkinnedBaseClip(prev, next, dur);
+			fadeSkinnedBaseClip(prev, next, dur, { reverseLocomotion: true });
 			this.skinned.baseClip = next;
 		}
 	}

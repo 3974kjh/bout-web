@@ -151,7 +151,7 @@
 
 		if (playerUsesSkinnedGltfForBase(mb0)) {
 			const urls = playerGltfUrlListForBase(mb0);
-			const gltfOpts = skinnedGltfLoadOptionsForBase(mb0);
+			const gltfOpts = skinnedGltfLoadOptionsForBase(mb0, 'preview');
 			void loadSkinnedPlayerWithFallback(urls, gltfOpts)
 				.then((payload) => {
 					if (!alive || !host) {
