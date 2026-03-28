@@ -17,7 +17,16 @@ import { TrainingPlanet } from '../stages/TrainingPlanet';
 import { DamageNumbers } from '../ui/DamageNumbers';
 import { EventBus } from '../bridge/EventBus';
 import type { MechParts, MonsterConfig } from '$lib/domain/types';
-import { computeRunScore, VICTORY_SURVIVAL_SECONDS } from '../constants/GameConfig';
+import {
+	BACKGROUND_IMAGE_COUNT,
+	BACKGROUND_PLANE_SUBDIV,
+	BACKGROUND_TEXTURE_REPEAT,
+	computeRunScore,
+	VICTORY_SURVIVAL_SECONDS
+} from '../constants/GameConfig';
+
+/** 배경 4분면 쿼드를 카메라 앞에 둘 거리 */
+const BACKGROUND_QUAD_DISTANCE = 200;
 
 type BossAoeKind = NonNullable<MonsterConfig['bossAnimalType']>;
 
@@ -54,6 +63,7 @@ export class GameEngine {
 	private recentShardCount = 0;      // 최근 5초 내 수집 조각 수
 	private shardBurstTimer = 0;       // 조각 수집 집계 창 (ms)
 	private killEffects: { mesh: THREE.Mesh; life: number }[] = [];
+	private missileHitEffects: { mesh: THREE.Mesh; life: number }[] = [];
 	private normalMonsterKills = 0;
 	private bossKillsByType: Record<BossAoeKind, number> = {
 		bear: 0,
@@ -108,6 +118,11 @@ export class GameEngine {
 	private animId = 0;
 	private container: HTMLElement;
 
+	private backgroundTexture: THREE.Texture | null = null;
+	private backgroundImageIndex = 0;
+	private backgroundLoadingIndex = 0;
+	private backgroundQuadGroup: THREE.Group | null = null;
+
 	// 핸들러 바인딩
 	private restartHandler = (): void => {
 		void this.restart();
@@ -133,6 +148,9 @@ export class GameEngine {
 	private playerHitHandler = (): void => {
 		this.camCtrl.shake(0.28, 180);
 	};
+	private boundaryFallShakeHandler = (): void => {
+		this.camCtrl.shake(0.42, 340);
+	};
 	private pauseSetHandler = (...args: unknown[]): void => {
 		this.isEscapePaused = !!(args[0] as { paused: boolean }).paused;
 	};
@@ -150,7 +168,6 @@ export class GameEngine {
 		container.appendChild(this.renderer.domElement);
 
 		this.scene = new THREE.Scene();
-		this.scene.background = new THREE.Color(0x8fb0cc);
 		this.scene.fog = new THREE.Fog(0x8fb0cc, 130, 220);
 
 		this.camera = new THREE.PerspectiveCamera(62, container.clientWidth / container.clientHeight, 0.1, 260);
@@ -163,6 +180,7 @@ export class GameEngine {
 
 		this.setupLights();
 		this.initGame();
+		this.applyDifficultyTheme(this.waveSystem.diffTier);
 
 		window.addEventListener('resize', this.resizeHandler);
 		EventBus.on('restart-game', this.restartHandler);
@@ -170,6 +188,7 @@ export class GameEngine {
 		EventBus.on('enemy-projectile', this.enemyProjectileHandler);
 		EventBus.on('upgrade-chosen', this.upgradeChosenHandler);
 		EventBus.on('player-hit', this.playerHitHandler);
+		EventBus.on('player-boundary-fall', this.boundaryFallShakeHandler);
 		EventBus.on('game-pause-set', this.pauseSetHandler);
 		this.animate();
 	}
@@ -216,6 +235,7 @@ export class GameEngine {
 		this.playerProjectiles = [];
 		this.expShards = [];
 		this.killEffects = [];
+		this.missileHitEffects = [];
 		this.killStreak = 0;
 		this.killStreakTimer = 0;
 		this.overdriveTimer = 0;
@@ -288,6 +308,7 @@ export class GameEngine {
 			this.handleDeaths();
 			this.updateWaveSystem(dt);
 			this.updateKillEffects(dt);
+			this.updateMissileHitEffects(dt);
 			this.updateOverdrive(dt);
 			this.updateAoeEffects(dt);
 			this.updateBossStrikeAnims(dt);
@@ -299,6 +320,7 @@ export class GameEngine {
 		}
 
 		this.camCtrl.update(dt, this.player.group.position);
+		this.syncBackgroundQuadsToCamera();
 		this.renderer.render(this.scene, this.camera);
 		this.damageNumbers.update(dt);
 		this.updateMinimap(dt);
@@ -387,6 +409,30 @@ export class GameEngine {
 
 	// ─── 플레이어 미사일 충돌 ────────────────────────────────────────────────────
 
+	/** 궤적 세그먼트와 구체 충돌 (고속 미사일 터널링 방지) */
+	private static segmentDistSqToPoint(
+		ax: number, ay: number, az: number,
+		bx: number, by: number, bz: number,
+		px: number, py: number, pz: number
+	): number {
+		const abx = bx - ax, aby = by - ay, abz = bz - az;
+		const apx = px - ax, apy = py - ay, apz = pz - az;
+		const abLenSq = abx * abx + aby * aby + abz * abz;
+		const t = abLenSq < 1e-14 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby + apz * abz) / abLenSq));
+		const qx = ax + abx * t, qy = ay + aby * t, qz = az + abz * t;
+		const dx = px - qx, dy = py - qy, dz = pz - qz;
+		return dx * dx + dy * dy + dz * dz;
+	}
+
+	private static segmentHitsSphere(
+		ax: number, ay: number, az: number,
+		bx: number, by: number, bz: number,
+		cx: number, cy: number, cz: number,
+		r: number
+	): boolean {
+		return GameEngine.segmentDistSqToPoint(ax, ay, az, bx, by, bz, cx, cy, cz) <= r * r;
+	}
+
 	private updatePlayerProjectiles(dt: number): void {
 		const u = this.player.upgrades;
 		const canPierceObstacle = u.piercingCount > 0;
@@ -409,26 +455,36 @@ export class GameEngine {
 
 			for (const m of this.monsters) {
 				if (m.isDead() || p.hitIds.has(m.id)) continue;
-				const dist = p.mesh.position.distanceTo(m.group.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+				const cx = m.group.position.x;
+				const cy = m.group.position.y + 1.5;
+				const cz = m.group.position.z;
 				const hitRadius = 0.8 * u.missileScale * m.config.scale;
-				if (dist > hitRadius) continue;
+				const ax = prevPos.x, ay = prevPos.y, az = prevPos.z;
+				const bx = p.mesh.position.x, by = p.mesh.position.y, bz = p.mesh.position.z;
+				if (!GameEngine.segmentHitsSphere(ax, ay, az, bx, by, bz, cx, cy, cz, hitRadius)) continue;
 
-			// 히트!
-			p.hitIds.add(m.id);
-			const isCrit = Math.random() < 0.15; // 15% 크리티컬
-			const dmg = isCrit ? p.damage * 2 : p.damage;
-			const knockDir = new THREE.Vector3()
-				.subVectors(m.group.position, p.mesh.position)
-				.setY(0)
-				.normalize();
-			m.takeDamage(dmg, knockDir, false);
+				// 히트!
+				p.hitIds.add(m.id);
+				const isCrit = Math.random() < 0.15; // 15% 크리티컬
+				const dmg = isCrit ? p.damage * 2 : p.damage;
+				const knockDir = new THREE.Vector3()
+					.subVectors(m.group.position, p.mesh.position)
+					.setY(0)
+					.normalize();
+				m.takeDamage(dmg, knockDir, false);
 
-			EventBus.emit('damage-number', {
-				pos: m.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
-				amount: dmg,
-				type: isCrit ? 'crit' : 'deal'
-			});
-			if (isCrit) this.camCtrl.shake(0.18, 120);
+				const toM = new THREE.Vector3().subVectors(p.mesh.position, new THREE.Vector3(cx, cy, cz));
+				if (toM.lengthSq() < 1e-8) toM.set(0, 1, 0);
+				else toM.normalize();
+				const hitPos = new THREE.Vector3(cx, cy, cz).addScaledVector(toM, hitRadius);
+				this.spawnMissileHitImpact(hitPos);
+
+				EventBus.emit('damage-number', {
+					pos: m.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+					amount: dmg,
+					type: isCrit ? 'crit' : 'deal'
+				});
+				if (isCrit) this.camCtrl.shake(0.18, 120);
 
 				// 폭발
 				if (u.isExplosive) this.triggerExplosion(p.mesh.position.clone(), u.explosionRadius, dmg);
@@ -701,7 +757,8 @@ export class GameEngine {
 			{ bg: 0x180828, fog: 0x180828, fogNear: 60, fogFar: 130, ambient: 0xaa66ff, ambInt: 1.2, dir: 0xcc44ff, dirInt: 2.8 },
 		];
 		const t = themes[tier];
-		this.scene.background = new THREE.Color(t.bg);
+		this.requestBackgroundTexture(tier, t.bg);
+		this.ensureBackgroundQuads();
 		const fog = this.scene.fog as THREE.Fog;
 		if (fog) { fog.color.setHex(t.fog); fog.near = t.fogNear; fog.far = t.fogFar; }
 		// 조명 업데이트
@@ -715,6 +772,133 @@ export class GameEngine {
 		});
 		// 스테이지 구조물 색상
 		this.stage.setWaveTheme(tier);
+	}
+
+	/** 난이도 티어 → `background_{1+N}.png` (맵·건물과 동일). 한 면을 SUB×SUB으로 쪼개 그 위에 텍스처 타일 반복. */
+	private requestBackgroundTexture(tier: number, fallbackHex: number): void {
+		const index = Math.min(Math.max(0, tier) + 1, BACKGROUND_IMAGE_COUNT);
+		if (index === this.backgroundImageIndex && this.backgroundTexture) {
+			if (this.backgroundQuadGroup?.parent === this.scene) return;
+			this.backgroundLoadingIndex = 0;
+			return;
+		}
+		if (this.backgroundLoadingIndex === index) return;
+
+		this.backgroundImageIndex = index;
+		this.backgroundLoadingIndex = index;
+
+		if (this.backgroundTexture) {
+			this.clearBackgroundQuads();
+			this.backgroundTexture.dispose();
+			this.backgroundTexture = null;
+		}
+		this.scene.background = new THREE.Color(fallbackHex);
+
+		const url = `/images/background/background_${index}.png`;
+		const loader = new THREE.TextureLoader();
+		const loadIndex = index;
+
+		loader.load(
+			url,
+			(tex) => {
+				this.backgroundLoadingIndex = 0;
+				if (loadIndex !== this.backgroundImageIndex) {
+					tex.dispose();
+					return;
+				}
+				if (this.backgroundTexture) {
+					this.clearBackgroundQuads();
+					this.backgroundTexture.dispose();
+				}
+				this.applyBackgroundTilingTextureSettings(tex);
+				this.backgroundTexture = tex;
+				this.buildBackgroundTiledPlane(tex);
+			},
+			undefined,
+			() => {
+				this.backgroundLoadingIndex = 0;
+				if (loadIndex !== this.backgroundImageIndex) return;
+				this.clearBackgroundQuads();
+				this.scene.background = new THREE.Color(fallbackHex);
+			}
+		);
+	}
+
+	/** 한 면에 텍스처를 반복 타일링 — 이음새는 Repeat + 세그먼트 메쉬로 완화 */
+	private applyBackgroundTilingTextureSettings(tex: THREE.Texture): void {
+		tex.colorSpace = THREE.SRGBColorSpace;
+		tex.wrapS = THREE.RepeatWrapping;
+		tex.wrapT = THREE.RepeatWrapping;
+		const r = BACKGROUND_TEXTURE_REPEAT;
+		tex.repeat.set(r, r);
+		tex.offset.set(0, 0);
+		tex.generateMipmaps = true;
+		tex.minFilter = THREE.LinearMipmapLinearFilter;
+		tex.magFilter = THREE.LinearFilter;
+		const maxA = this.renderer.capabilities.getMaxAnisotropy();
+		tex.anisotropy = Math.min(16, maxA);
+	}
+
+	/** 재시작 등으로 씬에서 제거된 뒤에도 동일 티어 텍스처가 있으면 배경 면만 복구 */
+	private ensureBackgroundQuads(): void {
+		if (!this.backgroundTexture) return;
+		if (this.backgroundQuadGroup?.parent === this.scene) return;
+		this.buildBackgroundTiledPlane(this.backgroundTexture);
+	}
+
+	private syncBackgroundQuadsToCamera(): void {
+		if (!this.backgroundQuadGroup) return;
+		this.backgroundQuadGroup.position.copy(this.camera.position);
+		this.backgroundQuadGroup.quaternion.copy(this.camera.quaternion);
+	}
+
+	private clearBackgroundQuads(): void {
+		if (!this.backgroundQuadGroup) return;
+		this.scene.remove(this.backgroundQuadGroup);
+		for (const ch of this.backgroundQuadGroup.children) {
+			const mesh = ch as THREE.Mesh;
+			mesh.geometry.dispose();
+			const mat = mesh.material as THREE.MeshBasicMaterial;
+			mat.map = null;
+			mat.dispose();
+		}
+		this.backgroundQuadGroup.clear();
+		this.backgroundQuadGroup = null;
+	}
+
+	/**
+	 * 시야에 맞는 **한 평면**을 SUB×SUB으로만 쪼개고(4개 면), UV는 0~1로 두고
+	 * 텍스처 repeat로 **같은 이미지를 면 전체에 타일**한다. (아틀라스 4분할 아님)
+	 */
+	private buildBackgroundTiledPlane(mapTex: THREE.Texture): void {
+		this.clearBackgroundQuads();
+		const group = new THREE.Group();
+		group.name = 'BackgroundTiledPlane';
+		const d = BACKGROUND_QUAD_DISTANCE;
+		const vFov = THREE.MathUtils.degToRad(this.camera.fov);
+		const halfH = d * Math.tan(vFov * 0.5);
+		const halfW = halfH * this.camera.aspect;
+		const fullW = halfW * 2;
+		const fullH = halfH * 2;
+		const sub = BACKGROUND_PLANE_SUBDIV;
+
+		const geom = new THREE.PlaneGeometry(fullW, fullH, sub, sub);
+		const mat = new THREE.MeshBasicMaterial({
+			map: mapTex,
+			depthTest: false,
+			depthWrite: false,
+			fog: false,
+			toneMapped: true
+		});
+		const mesh = new THREE.Mesh(geom, mat);
+		mesh.frustumCulled = false;
+		mesh.renderOrder = -1000;
+		mesh.position.set(0, 0, -d);
+		group.add(mesh);
+
+		this.backgroundQuadGroup = group;
+		this.scene.add(group);
+		this.syncBackgroundQuadsToCamera();
 	}
 
 	// ─── 스폰 ────────────────────────────────────────────────────────────────────
@@ -818,6 +1002,61 @@ export class GameEngine {
 			const t = 1 - ef.life;
 			ef.mesh.scale.setScalar(1 + t * 3.5);
 			(ef.mesh.material as THREE.MeshBasicMaterial).opacity = ef.life * 0.85;
+		}
+	}
+
+	/** 플레이어 미사일이 적·보스에 명중한 표면 근처 좌표 */
+	private spawnMissileHitImpact(pos: THREE.Vector3): void {
+		const c = this.playerMissileColor;
+		const col = new THREE.Color(c);
+
+		const ring = new THREE.Mesh(
+			new THREE.RingGeometry(0.14, 0.48, 22),
+			new THREE.MeshBasicMaterial({
+				color: col,
+				transparent: true,
+				opacity: 0.92,
+				side: THREE.DoubleSide,
+				blending: THREE.AdditiveBlending,
+				depthWrite: false
+			})
+		);
+		ring.rotation.x = -Math.PI / 2;
+		ring.position.copy(pos);
+		this.scene.add(ring);
+		this.missileHitEffects.push({ mesh: ring, life: 1 });
+
+		const flash = new THREE.Mesh(
+			new THREE.SphereGeometry(0.24, 8, 8),
+			new THREE.MeshBasicMaterial({
+				color: col,
+				transparent: true,
+				opacity: 0.78,
+				blending: THREE.AdditiveBlending,
+				depthWrite: false
+			})
+		);
+		flash.position.copy(pos);
+		this.scene.add(flash);
+		this.missileHitEffects.push({ mesh: flash, life: 1 });
+	}
+
+	private updateMissileHitEffects(dt: number): void {
+		for (let i = this.missileHitEffects.length - 1; i >= 0; i--) {
+			const ef = this.missileHitEffects[i];
+			ef.life -= dt * 5.2;
+			if (ef.life <= 0) {
+				this.scene.remove(ef.mesh);
+				ef.mesh.geometry.dispose();
+				(ef.mesh.material as THREE.Material).dispose();
+				this.missileHitEffects.splice(i, 1);
+				continue;
+			}
+			const mat = ef.mesh.material as THREE.MeshBasicMaterial;
+			const isSphere = ef.mesh.geometry instanceof THREE.SphereGeometry;
+			mat.opacity = ef.life * (isSphere ? 0.78 : 0.92);
+			const grow = 1 + (1 - ef.life) * (isSphere ? 2.2 : 3.8);
+			ef.mesh.scale.setScalar(grow);
 		}
 	}
 
@@ -1298,6 +1537,7 @@ export class GameEngine {
 		while (this.scene.children.length > 0) this.scene.remove(this.scene.children[0]);
 		this.setupLights();
 		this.initGame();
+		this.applyDifficultyTheme(this.waveSystem.diffTier);
 	}
 
 	private onResize(): void {
@@ -1306,6 +1546,21 @@ export class GameEngine {
 		this.camera.aspect = w / h;
 		this.camera.updateProjectionMatrix();
 		this.renderer.setSize(w, h);
+		this.relayoutBackgroundQuads();
+	}
+
+	private relayoutBackgroundQuads(): void {
+		if (!this.backgroundQuadGroup || !this.backgroundTexture) return;
+		const mesh = this.backgroundQuadGroup.children[0] as THREE.Mesh | undefined;
+		if (!mesh) return;
+		const d = BACKGROUND_QUAD_DISTANCE;
+		const vFov = THREE.MathUtils.degToRad(this.camera.fov);
+		const halfH = d * Math.tan(vFov * 0.5);
+		const halfW = halfH * this.camera.aspect;
+		const sub = BACKGROUND_PLANE_SUBDIV;
+		mesh.geometry.dispose();
+		mesh.geometry = new THREE.PlaneGeometry(halfW * 2, halfH * 2, sub, sub);
+		mesh.position.set(0, 0, -d);
 	}
 
 	destroy(): void {
@@ -1316,6 +1571,7 @@ export class GameEngine {
 		EventBus.off('enemy-projectile', this.enemyProjectileHandler);
 		EventBus.off('upgrade-chosen', this.upgradeChosenHandler);
 		EventBus.off('player-hit', this.playerHitHandler);
+		EventBus.off('player-boundary-fall', this.boundaryFallShakeHandler);
 		EventBus.off('game-pause-set', this.pauseSetHandler);
 		for (const fx of this.bossStrikeAnims) {
 			for (const m of fx.meshes) {
@@ -1346,6 +1602,18 @@ export class GameEngine {
 		for (const p of this.projectiles) p.dispose(this.scene);
 		for (const p of this.playerProjectiles) p.dispose(this.scene);
 		for (const s of this.expShards) s.dispose(this.scene);
+		for (const ef of this.missileHitEffects) {
+			this.scene.remove(ef.mesh);
+			ef.mesh.geometry.dispose();
+			(ef.mesh.material as THREE.Material).dispose();
+		}
+		this.missileHitEffects = [];
+		this.clearBackgroundQuads();
+		if (this.backgroundTexture) {
+			this.backgroundTexture.dispose();
+			this.backgroundTexture = null;
+		}
+		this.scene.background = null;
 		this.renderer.dispose();
 		if (this.renderer.domElement.parentElement) {
 			this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);

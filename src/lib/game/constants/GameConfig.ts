@@ -105,6 +105,14 @@ export const SCORE_LEVEL_FACTOR = 72;
 /** 생존 1초당 기본 점수 (가중 전) */
 export const SCORE_TIME_FACTOR = 6;
 
+/** 카메라 앞 **한 면**의 가로·세로 세그먼트 수 (2 → 면을 2×2 조각 메쉬로 분할, UV는 한 장에 연속) */
+export const BACKGROUND_PLANE_SUBDIV = 2;
+/** 그 면 전체에 텍스처를 가로·세로 몇 번 **반복**(타일)할지 — `RepeatWrapping` */
+export const BACKGROUND_TEXTURE_REPEAT = 2;
+
+/** 티어 세트 개수 — `static/images/background/background_{1..N}.png` (맵·건물과 동일 티어 인덱스) */
+export const BACKGROUND_IMAGE_COUNT = 6;
+
 /** 이 시간(초)까지 생존하면 승리 */
 export const VICTORY_SURVIVAL_SECONDS = 20 * 60;
 

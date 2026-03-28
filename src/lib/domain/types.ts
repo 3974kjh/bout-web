@@ -83,5 +83,9 @@ export interface StageQuery {
 		y: number,
 		radius?: number
 	): { x: number; z: number };
+	/**
+	 * resolveMovement와 동일한 규칙으로, 이미 장애물 XZ 내부에 박힌 경우 가장 가까운 면 밖으로 밀어냄 (점프 착지 끼임 완화).
+	 */
+	pushOutOfObstacles(x: number, z: number, y: number, radius?: number): { x: number; z: number };
 	bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
 }

@@ -1,13 +1,30 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+
+	onMount(() => {
+		const html = document.documentElement;
+		const body = document.body;
+		const prevHtml = html.style.overflow;
+		const prevBody = body.style.overflow;
+		html.style.overflow = 'hidden';
+		body.style.overflow = 'hidden';
+		return () => {
+			html.style.overflow = prevHtml;
+			body.style.overflow = prevBody;
+		};
+	});
 </script>
 
 <main class="landing">
+	<div class="bg-quad-wrap" aria-hidden="true">
+		<div class="bg-quad bg-quad--tl"></div>
+		<div class="bg-quad bg-quad--tr"></div>
+		<div class="bg-quad bg-quad--bl"></div>
+		<div class="bg-quad bg-quad--br"></div>
+	</div>
 	<div class="bg-vignette" aria-hidden="true"></div>
-	<div class="bg-platform-stream" aria-hidden="true"></div>
-	<div class="bg-grid" aria-hidden="true"></div>
 	<div class="bg-glow" aria-hidden="true"></div>
-	<div class="bg-scan" aria-hidden="true"></div>
 	<div class="bg-threat" aria-hidden="true"></div>
 	<div class="frame-corners frame-corners--tl" aria-hidden="true"></div>
 	<div class="frame-corners frame-corners--tr" aria-hidden="true"></div>
@@ -104,16 +121,61 @@
 <style>
 	.landing {
 		position: relative;
-		min-height: 100vh;
+		box-sizing: border-box;
+		width: 100%;
+		height: 100dvh;
+		max-height: 100dvh;
+		min-height: 0;
+		overflow: hidden;
 		overflow-x: hidden;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		padding: clamp(1.5rem, 4vw, 3rem);
+		padding: clamp(0.5rem, 2.5vmin, 1.75rem);
+		gap: clamp(0.35rem, 1.8vh, 1rem);
 		font-family: 'Segoe UI', system-ui, sans-serif;
 		color: #e8f4ff;
-		background: radial-gradient(ellipse 120% 80% at 50% 0%, #0c1830 0%, #05060f 45%, #020308 100%);
+		background: #04060e;
+	}
+
+	/* background_3.png 한 장을 2×2로 나눠 화면 사분면에 각각 매핑 */
+	.bg-quad-wrap {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+		overflow: hidden;
+	}
+
+	.bg-quad {
+		position: absolute;
+		width: 50%;
+		height: 50%;
+		background-image: url('/images/background/background_3.png');
+		background-repeat: no-repeat;
+		background-size: 100% 100%;
+	}
+
+	.bg-quad--tl {
+		top: 0;
+		left: 0;
+		background-position: 0% 0%;
+	}
+	.bg-quad--tr {
+		top: 0;
+		right: 0;
+		background-position: 100% 0%;
+	}
+	.bg-quad--bl {
+		bottom: 0;
+		left: 0;
+		background-position: 0% 100%;
+	}
+	.bg-quad--br {
+		bottom: 0;
+		right: 0;
+		background-position: 100% 100%;
 	}
 
 	.bg-vignette {
@@ -126,98 +188,13 @@
 		z-index: 0;
 	}
 
-	/* 규칙적인 발판 띠 — 한 주기(96px)만큼만 Y 이동해 끊김 없이 아래로 흐름 */
-	.bg-platform-stream {
-		position: absolute;
-		inset: -35% -15% 0 -15%;
-		height: 120%;
-		pointer-events: none;
-		z-index: 0;
-		opacity: 0.85;
-		transform: perspective(520px) rotateX(64deg);
-		transform-origin: 50% 0%;
-		background-image:
-			repeating-linear-gradient(
-				to bottom,
-				transparent 0,
-				transparent 52px,
-				rgba(0, 210, 255, 0.14) 52px,
-				rgba(0, 210, 255, 0.14) 54px,
-				transparent 54px,
-				transparent 68px,
-				rgba(0, 160, 255, 0.09) 68px,
-				rgba(0, 160, 255, 0.09) 70px,
-				transparent 70px,
-				transparent 96px
-			),
-			repeating-linear-gradient(
-				90deg,
-				transparent 0,
-				transparent 118px,
-				rgba(0, 180, 255, 0.07) 118px,
-				rgba(0, 180, 255, 0.07) 119px,
-				transparent 119px,
-				transparent 236px
-			);
-		background-size: 100% 96px, 236px 100%;
-		animation: platform-flow 9s linear infinite;
-	}
-
-	@keyframes platform-flow {
-		from {
-			background-position: 0 0, 0 0;
-		}
-		to {
-			background-position: 0 96px, 0 0;
-		}
-	}
-
-	.bg-grid {
-		position: absolute;
-		inset: -40%;
-		background-image:
-			linear-gradient(rgba(0, 200, 255, 0.065) 1px, transparent 1px),
-			linear-gradient(90deg, rgba(0, 200, 255, 0.065) 1px, transparent 1px);
-		background-size: 48px 48px;
-		transform: perspective(400px) rotateX(58deg) translateY(-6%);
-		animation: grid-flow 16s linear infinite;
-		pointer-events: none;
-		opacity: 0.42;
-		z-index: 0;
-	}
-
-	@keyframes grid-flow {
-		from {
-			background-position: 0 0, 0 0;
-		}
-		to {
-			background-position: 0 48px, 48px 0;
-		}
-	}
-
 	.bg-glow {
 		position: absolute;
 		inset: 0;
-		background: radial-gradient(circle at 50% 32%, rgba(0, 180, 255, 0.2), transparent 52%);
+		background: radial-gradient(circle at 50% 32%, rgba(0, 180, 255, 0.18), transparent 52%);
 		pointer-events: none;
-		animation: glow-pulse 5.5s ease-in-out infinite alternate;
 		z-index: 0;
-	}
-
-	.bg-scan {
-		position: absolute;
-		inset: 0;
-		background: linear-gradient(
-			to bottom,
-			transparent 0%,
-			rgba(0, 220, 255, 0.028) 50%,
-			transparent 100%
-		);
-		background-size: 100% 180%;
-		animation: scan-move 11s linear infinite;
-		pointer-events: none;
-		opacity: 0.42;
-		z-index: 0;
+		opacity: 0.88;
 	}
 
 	.bg-threat {
@@ -225,18 +202,8 @@
 		inset: 0;
 		pointer-events: none;
 		z-index: 0;
-		background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255, 60, 20, 0.12), transparent 62%);
-		animation: threat-breathe 4.2s ease-in-out infinite;
-	}
-
-	@keyframes threat-breathe {
-		0%,
-		100% {
-			opacity: 0.55;
-		}
-		50% {
-			opacity: 1;
-		}
+		opacity: 0.7;
+		background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255, 60, 20, 0.1), transparent 62%);
 	}
 
 	.frame-corners {
@@ -278,30 +245,7 @@
 		border-radius: 0 0 4px 0;
 	}
 
-	@keyframes glow-pulse {
-		from {
-			opacity: 0.65;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-
-	@keyframes scan-move {
-		from {
-			background-position: 0 -35%;
-		}
-		to {
-			background-position: 0 135%;
-		}
-	}
-
 	@media (prefers-reduced-motion: reduce) {
-		.bg-platform-stream,
-		.bg-grid,
-		.bg-glow,
-		.bg-scan,
-		.bg-threat,
 		.survival-strip__pulse,
 		.survival-strip__dot,
 		.fake-radar__sweep,
@@ -318,7 +262,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
-		margin-bottom: 0.85rem;
+		margin-bottom: clamp(0.35rem, 1.2vh, 0.75rem);
 		padding: 0.35rem 0.85rem;
 		border-radius: 2px;
 		border: 1px solid rgba(255, 80, 40, 0.45);
@@ -383,6 +327,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		min-height: 0;
+		flex: 0 1 auto;
 	}
 
 	.hero-inner {
@@ -402,7 +348,7 @@
 
 	.title {
 		margin: 0;
-		font-size: clamp(3.2rem, 12vw, 4.8rem);
+		font-size: clamp(2.4rem, 10vw, 4.8rem);
 		font-weight: 900;
 		letter-spacing: 0.42em;
 		padding-left: 0.42em;
@@ -415,14 +361,14 @@
 	}
 
 	.tagline {
-		margin: 0.75rem 0 0.5rem;
+		margin: clamp(0.35rem, 1.5vh, 0.75rem) 0 clamp(0.25rem, 1vh, 0.5rem);
 		font-size: 0.95rem;
 		line-height: 1.55;
 		color: rgba(200, 220, 240, 0.82);
 	}
 
 	.tagline-sub {
-		margin: 0 0 1.1rem;
+		margin: 0 0 clamp(0.5rem, 2vh, 1rem);
 		max-width: 22rem;
 		font-size: 0.72rem;
 		line-height: 1.6;
@@ -432,7 +378,7 @@
 
 	.pills {
 		list-style: none;
-		margin: 0 0 1.75rem;
+		margin: 0 0 clamp(0.65rem, 2.5vh, 1.5rem);
 		padding: 0;
 		display: flex;
 		flex-wrap: wrap;
@@ -645,8 +591,8 @@
 	}
 
 	.hud-hint {
-		margin-top: 2rem;
-		padding-top: 1.25rem;
+		margin-top: clamp(0.75rem, 2.5vh, 1.5rem);
+		padding-top: clamp(0.5rem, 1.5vh, 1rem);
 		border-top: 1px solid rgba(0, 200, 255, 0.12);
 	}
 
@@ -757,7 +703,8 @@
 	.controls {
 		position: relative;
 		z-index: 1;
-		margin-top: 2.5rem;
+		margin-top: clamp(0.5rem, 2vh, 1.25rem);
+		flex-shrink: 0;
 		width: min(100%, 28rem);
 		padding: 1rem 1.15rem;
 		border-radius: 8px;
@@ -809,7 +756,8 @@
 	.foot {
 		position: relative;
 		z-index: 1;
-		margin-top: 2rem;
+		margin-top: clamp(0.35rem, 1.5vh, 1rem);
+		flex-shrink: 0;
 		font-size: 0.65rem;
 		letter-spacing: 0.14em;
 		color: rgba(120, 150, 170, 0.45);

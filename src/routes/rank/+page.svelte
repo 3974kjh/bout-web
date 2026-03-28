@@ -38,10 +38,20 @@
 	});
 
 	onMount(() => {
+		const html = document.documentElement;
+		const body = document.body;
+		const prevHtml = html.style.overflow;
+		const prevBody = body.style.overflow;
+		html.style.overflow = 'hidden';
+		body.style.overflow = 'hidden';
 		void readRankRecords().then((r) => {
 			records = r;
 			loading = false;
 		});
+		return () => {
+			html.style.overflow = prevHtml;
+			body.style.overflow = prevBody;
+		};
 	});
 
 	function fmtTime(sec: number): string {
@@ -68,16 +78,19 @@
 	);
 </script>
 
-<main class="rank-page bout-scrollbar">
+<main class="rank-page">
 	<BackToHomeButton />
-	<header class="rank-head">
-		<h1>기록 랭킹</h1>
-		<p class="sub">게임 오버 시 기록이 저장됩니다. 최대 2000건까지 보관됩니다.</p>
-	</header>
-
 	{#if loading}
-		<p class="loading">불러오는 중…</p>
+		<div class="rank-body rank-body--loading">
+			<p class="loading">불러오는 중…</p>
+		</div>
 	{:else}
+		<div class="rank-body">
+			<header class="rank-head">
+				<h1>기록 랭킹</h1>
+				<p class="sub">게임 오버 시 기록이 저장됩니다. 최대 2000건까지 보관됩니다.</p>
+			</header>
+
 		<section class="podium-section" aria-label="시상대">
 			{#if sorted.length === 0}
 				<p class="empty-podium">아직 기록이 없습니다. 작전을 한 번 끝내면 여기에 표시됩니다.</p>
@@ -150,24 +163,47 @@
 				</nav>
 			{/if}
 		</section>
+		</div>
 	{/if}
 </main>
 
 <style>
 	.rank-page {
-		min-height: 100vh;
-		height: 100vh;
-		overflow-x: hidden;
-		overflow-y: auto;
-		padding: clamp(1rem, 3vw, 2rem);
+		box-sizing: border-box;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		height: 100dvh;
+		max-height: 100dvh;
+		min-height: 0;
+		overflow: hidden;
+		padding: clamp(0.75rem, 2.5vw, 1.75rem);
+		padding-top: clamp(2.75rem, 8vw, 3.25rem);
 		font-family: 'Segoe UI', system-ui, sans-serif;
 		color: #e8f4ff;
 		background: radial-gradient(ellipse 120% 80% at 50% 0%, #0c1830 0%, #05060f 45%, #020308 100%);
 	}
 
-	.rank-head {
+	.rank-body {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		width: 100%;
 		max-width: 56rem;
-		margin: 0 auto 1.5rem;
+		margin: 0 auto;
+		overflow: hidden;
+	}
+
+	.rank-body--loading {
+		align-items: center;
+		justify-content: center;
+	}
+
+	.rank-head {
+		flex-shrink: 0;
+		width: 100%;
+		margin: 0 auto 0.85rem;
 		text-align: center;
 	}
 
@@ -188,13 +224,25 @@
 	}
 
 	.loading {
+		margin: 0;
 		text-align: center;
 		color: rgba(120, 180, 220, 0.85);
 	}
 
 	.podium-section {
-		max-width: 56rem;
-		margin: 0 auto 1.35rem;
+		flex: 0 1 auto;
+		min-height: 0;
+		width: 100%;
+		margin: 0 0 0.65rem;
+		max-height: min(36vh, 280px);
+		overflow: hidden;
+	}
+
+	/* 뷰포트 안에 맞추기 — 시상대 WebGL 영역이 본문 스크롤을 밀어내지 않도록 */
+	.podium-section :global(.podium-host) {
+		box-sizing: border-box;
+		min-height: 0 !important;
+		max-height: min(36vh, 280px);
 	}
 
 	.empty-podium {
@@ -209,12 +257,18 @@
 	}
 
 	.list-section {
-		max-width: 56rem;
-		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		width: 100%;
+		margin: 0;
+		overflow: hidden;
 	}
 
 	.list-title {
-		margin: 0 0 0.75rem;
+		flex-shrink: 0;
+		margin: 0 0 0.5rem;
 		font-size: 0.95rem;
 		font-weight: 800;
 		letter-spacing: 0.08em;
@@ -222,12 +276,16 @@
 	}
 
 	.empty-list {
+		flex-shrink: 0;
 		color: rgba(160, 200, 230, 0.75);
 		font-size: 0.85rem;
 	}
 
 	.table-wrap {
-		overflow-x: auto;
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
+		-webkit-overflow-scrolling: touch;
 		border-radius: 10px;
 		border: 1px solid rgba(0, 140, 200, 0.28);
 		background: rgba(0, 12, 28, 0.55);
@@ -248,11 +306,15 @@
 	}
 
 	.rank-table th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
 		color: rgba(160, 210, 255, 0.85);
 		font-weight: 600;
 		letter-spacing: 0.04em;
-		background: rgba(0, 40, 70, 0.45);
+		background: rgba(0, 40, 70, 0.92);
 		white-space: nowrap;
+		box-shadow: 0 1px 0 rgba(0, 80, 120, 0.35);
 	}
 
 	.rank-table tbody tr:hover {
@@ -302,11 +364,13 @@
 	}
 
 	.pager {
+		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 1rem;
-		margin-top: 1rem;
+		margin-top: 0.65rem;
+		padding-bottom: 0.15rem;
 	}
 
 	.pg-btn {

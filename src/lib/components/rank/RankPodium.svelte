@@ -71,7 +71,7 @@
 		const rankPlates: THREE.Mesh[] = [];
 		let raf = 0;
 
-		const STAGE_H = 0.2;
+		const STAGE_H = 0.1;
 
 		function podiumMaterials(rank: 1 | 2 | 3): THREE.MeshStandardMaterial {
 			if (rank === 1) {
@@ -326,9 +326,8 @@
 			const form = formForLevel(s.rec.level);
 			const lv = s.rec.level;
 			/** 시상대에 전신이 들어오도록 축소 */
-			const scale =
-				s.rank === 1 ? 0.99 : s.rank === 2 ? 0.89 : 0.82;
-			const y = STAGE_H + s.pedH + 0.16;
+			const scale = 0.8;
+			const y = STAGE_H + s.pedH;
 
 			if (mechBase === 'expressive' || mechBase === 'soldier') {
 				const urls = playerGltfUrlListForBase(mechBase);

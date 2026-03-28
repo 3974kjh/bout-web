@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createAnimalRobotModel, createBossAnimalModel, type MechParts3D } from './MechModel';
 import type { MonsterAIState, MonsterConfig, StageQuery } from '$lib/domain/types';
-import { GRAVITY, JUMP_FORCE, KNOCKDOWN_THRESHOLD, KNOCKDOWN_MS } from '../constants/GameConfig';
+import { GRAVITY, KNOCKDOWN_THRESHOLD, KNOCKDOWN_MS } from '../constants/GameConfig';
 import { EventBus } from '../bridge/EventBus';
 
 export class Monster {
@@ -33,6 +33,8 @@ export class Monster {
 	private lastHpRatio = -1;
 	private moveVel = new THREE.Vector3();
 	private dangerRing!: THREE.Mesh;
+	/** 링 기본 로컬 Y (발밑 기준) — surface 보정은 매 프레임 더함 */
+	private dangerRingBaseY = 0;
 
 	// 끼임 탈출 로직
 	private stuckPos    = new THREE.Vector3();
@@ -44,6 +46,9 @@ export class Monster {
 	// 보스 AOE 쿨타임
 	private aoeTimer    = 0;
 	private proxAoeTimer = 0; // 근접 AOE (공격 범위 내 진입 시)
+
+	/** 장애물 넘기 점프 연타 방지 (ms) */
+	private obstacleJumpCooldownMs = 0;
 
 	constructor(scene: THREE.Scene, pos: THREE.Vector3, config: MonsterConfig) {
 		this.config = config;
@@ -73,11 +78,16 @@ export class Monster {
 			transparent: true,
 			opacity: 0,
 			side: THREE.DoubleSide,
-			depthWrite: false
+			depthWrite: false,
+			polygonOffset: true,
+			polygonOffsetFactor: -2,
+			polygonOffsetUnits: -3
 		});
 		this.dangerRing = new THREE.Mesh(ringGeo, ringMat);
 		this.dangerRing.rotation.x = -Math.PI / 2;
-		this.dangerRing.position.y = 0.04;
+		this.dangerRing.renderOrder = 5;
+		this.dangerRingBaseY = 0.03 + 0.02 * config.scale;
+		this.dangerRing.position.y = this.dangerRingBaseY;
 		this.group.add(this.dangerRing);
 
 		// 단일 캔버스 HP 스프라이트 (배경 + 채움 한 번에 렌더링)
@@ -121,6 +131,9 @@ export class Monster {
 		if (this.hp <= 0) return;
 		const ms = dt * 1000;
 		this.stateTimer += ms;
+		if (this.obstacleJumpCooldownMs > 0) {
+			this.obstacleJumpCooldownMs = Math.max(0, this.obstacleJumpCooldownMs - ms);
+		}
 
 		if (this.flashTimer > 0) {
 			this.flashTimer -= ms;
@@ -296,23 +309,49 @@ export class Monster {
 			const fromZ = this.group.position.z;
 			const toX   = fromX + moveX;
 			const toZ   = fromZ + moveZ;
+			const feetY = this.group.position.y;
+			const probeY = 14;
+
+			// 1) 이동 방향 앞쪽에 더 높은 발판이 있으면 먼저 점프 (벽에 닿기 전에 넘기)
+			if (this.isOnGround && this.obstacleJumpCooldownMs <= 0) {
+				const mlen = Math.hypot(moveX, moveZ);
+				if (mlen > 1e-6) {
+					const nx = moveX / mlen;
+					const nz = moveZ / mlen;
+					let maxStep = 0;
+					for (const dist of [0.32, 0.55, 0.85, 1.15, 1.45]) {
+						const px = fromX + nx * dist;
+						const pz = fromZ + nz * dist;
+						const top = stage.getGroundHeight(px, pz, probeY);
+						const d = top - feetY;
+						if (d > maxStep && d > 0.26 && d < 5.9) maxStep = d;
+					}
+					if (maxStep > 0.26) {
+						this.velocityY = this.jumpVelForObstacleClear(maxStep);
+						this.isOnGround = false;
+						this.obstacleJumpCooldownMs = 380;
+					}
+				}
+			}
+
 			const resolved = stage.resolveMovement(fromX, fromZ, toX, toZ, this.group.position.y);
 
-			// 장애물에 막혔고 지면에 있을 때 → 점프 시도
-			const blockedX = Math.abs(resolved.x - fromX) < 0.0015 && Math.abs(moveX) > 0.0005;
-			const blockedZ = Math.abs(resolved.z - fromZ) < 0.0015 && Math.abs(moveZ) > 0.0005;
-			if ((blockedX || blockedZ) && this.isOnGround) {
-				// 목표 방향 장애물 높이 체크 (currentY=10으로 높이 불문 조회)
-				const obstH = stage.getGroundHeight(toX, toZ, 10);
-				const curY  = this.group.position.y;
-			const needJump = obstH > curY + 0.3 && obstH < curY + 4.5;
-			if (needJump) {
-				// 장애물 높이에 비례한 점프력
-				const heightDiff = obstH - curY;
-				const jumpMult = 1.0 + heightDiff * 0.25;
-				this.velocityY = JUMP_FORCE * jumpMult;
-				this.isOnGround = false;
-			}
+			// 2) 막힌 뒤 보조 점프 (미끄러짐·모서리에서도 감지)
+			if (this.isOnGround && this.obstacleJumpCooldownMs <= 0) {
+				const obstH = stage.getGroundHeight(toX, toZ, probeY);
+				const stuck = Math.hypot(resolved.x - fromX, resolved.z - fromZ) < 0.018;
+				const fellShort = Math.hypot(resolved.x - toX, resolved.z - toZ) > 0.03;
+				const moving = Math.hypot(moveX, moveZ) > 1e-5;
+				const heightDiff = obstH - feetY;
+				const needJump =
+					heightDiff > 0.26 &&
+					heightDiff < 5.9 &&
+					((stuck && moving) || (fellShort && heightDiff > 0.38));
+				if (needJump) {
+					this.velocityY = this.jumpVelForObstacleClear(heightDiff);
+					this.isOnGround = false;
+					this.obstacleJumpCooldownMs = 400;
+				}
 			}
 
 			this.group.position.x = resolved.x;
@@ -321,7 +360,7 @@ export class Monster {
 
 		if (!this.isOnGround) this.velocityY += GRAVITY * dt;
 		this.group.position.y += this.velocityY * dt;
-		const gy = stage.getGroundHeight(
+		let gy = stage.getGroundHeight(
 			this.group.position.x,
 			this.group.position.z,
 			this.group.position.y + 2
@@ -333,6 +372,39 @@ export class Monster {
 		} else {
 			this.isOnGround = false;
 		}
+
+		const po = stage.pushOutOfObstacles(
+			this.group.position.x,
+			this.group.position.z,
+			this.group.position.y,
+			0.45
+		);
+		this.group.position.x = po.x;
+		this.group.position.z = po.z;
+		if (this.velocityY <= 0.38) {
+			gy = stage.getGroundHeight(
+				this.group.position.x,
+				this.group.position.z,
+				this.group.position.y + 2
+			);
+			if (this.group.position.y <= gy + 0.1) {
+				this.group.position.y = gy;
+				this.velocityY = 0;
+				this.isOnGround = true;
+			} else {
+				this.isOnGround = false;
+			}
+		} else {
+			gy = stage.getGroundHeight(
+				this.group.position.x,
+				this.group.position.z,
+				this.group.position.y + 2
+			);
+			if (this.group.position.y > gy + 0.14) this.isOnGround = false;
+		}
+
+		// 발 좌표 = group.y(발밑). 링/시각과 동일하게 발판 상면에 맞춤 (점프 착지 후에도 플레이어 링 로직과 일치)
+		this.alignFeetToGroundSurface(stage);
 
 		const b = stage.bounds;
 		this.group.position.x = Math.max(b.minX, Math.min(b.maxX, this.group.position.x));
@@ -368,7 +440,7 @@ export class Monster {
 			this.animateMonster(isQuickAttacker, isHeavyAttacker);
 		}
 		this.updateHPBar();
-		this.updateDangerRing();
+		this.updateDangerRing(stage);
 	}
 
 	/** 타겟 근처 랜덤 위치에 AOE 발사 (scaleMult: 반경/속도 배율) */
@@ -389,6 +461,32 @@ export class Monster {
 			damage: dmg,
 			aoeKind: this.config.bossAnimalType ?? 'bear'
 		});
+	}
+
+	/** 낮은 장애물·발판을 넘기 위한 초기 상승 속도 (물리 상 한계 내에서 높이에 맞춤) */
+	private jumpVelForObstacleClear(deltaH: number): number {
+		const g = Math.abs(GRAVITY);
+		const h = THREE.MathUtils.clamp(deltaH, 0.3, 5.6);
+		return Math.min(26, Math.sqrt(2 * g * h) * 1.1);
+	}
+
+	/**
+	 * group.origin y = 발밑(MechModel 기준). getGroundHeight만 쓰면 발판 모서리에서 발과 링이 어긋날 수 있어
+	 * Player의 링과 동일하게 getGroundHeightForRing으로 상면을 맞춤.
+	 */
+	private alignFeetToGroundSurface(stage: StageQuery): void {
+		if (this.velocityY > 0.48) return;
+		const x = this.group.position.x;
+		const z = this.group.position.z;
+		const fy = this.group.position.y;
+		const yRing = stage.getGroundHeightForRing(x, z, fy);
+		const yStd = stage.getGroundHeight(x, z, fy + 2);
+		const ySurface = Math.max(yRing, yStd);
+		if (fy <= ySurface + 0.12) {
+			this.group.position.y = ySurface;
+			this.velocityY = 0;
+			this.isOnGround = true;
+		}
 	}
 
 	/** -Z 축이 타겟을 향하도록 회전 (Three.js lookAt은 +Z가 향하므로 반전 필요) */
@@ -488,7 +586,17 @@ export class Monster {
 		this.drawHpBar(ratio);
 	}
 
-	private updateDangerRing(): void {
+	private updateDangerRing(stage: StageQuery): void {
+		// 발판 상면과 발 좌표가 소수 프레임 어긋나도, 월드에서 링이 항상 지면·발판 위에 깔리도록 보정
+		const footY = this.group.position.y;
+		const sx = this.group.position.x;
+		const sz = this.group.position.z;
+		const yRing = stage.getGroundHeightForRing(sx, sz, footY);
+		const yStd = stage.getGroundHeight(sx, sz, footY + 2);
+		const surfaceY = Math.max(yRing, yStd);
+		const lift = Math.max(0, surfaceY - footY);
+		this.dangerRing.position.y = this.dangerRingBaseY + lift + 0.012;
+
 		const isAttacking = this.aiState === 'attack' || this.aiState === 'rangedAttack';
 		const targetOpacity = isAttacking ? 0.7 : this.aiState === 'chase' ? 0.18 : 0;
 		const mat = this.dangerRing.material as THREE.MeshBasicMaterial;

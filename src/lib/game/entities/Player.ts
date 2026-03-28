@@ -90,6 +90,9 @@ export class Player {
 	/** 2단 점프 중 누적 Y 회전 (lookAt 대신 baseYaw+이 값으로 적용) */
 	private doubleJumpSpinApplied = 0;
 
+	/** >0 이면 맵 밖 추락 중 — 이동 입력 무시 */
+	private outOfBoundsFallMs = 0;
+
 	private readonly mechBase: MechBase;
 
 	/** GLTF 스키닝 모드 — 성공 시 Form별 절차 메쉬 스왑 생략 */
@@ -404,6 +407,20 @@ export class Player {
 
 		this.tickTimers(ms);
 
+		if (this.outOfBoundsFallMs > 0) {
+			this.outOfBoundsFallMs -= ms;
+			this.velocityY = -36;
+			this.group.position.y += this.velocityY * dt;
+			this.isOnGround = false;
+			this.animate(dt);
+			this.emitHud();
+			this.syncHudAttachments(stage);
+			if (this.group.position.y < -16 || this.outOfBoundsFallMs <= 0) {
+				this.completeOutOfBoundsRespawn(stage);
+			}
+			return;
+		}
+
 		if (this.state !== 'stunned') {
 			this.move(dt, input, stage);
 			this.jump(input);
@@ -411,10 +428,19 @@ export class Player {
 		}
 
 		this.applyGravity(dt, stage, input);
-		this.clampBounds(stage);
+		this.resolveObstaclePenetration(stage);
 		this.animate(dt);
 		this.emitHud();
-		// 피격 범위 링 — 발이 발판 위에 있을 때만 발판 높이 (수평만 겹칠 때는 지면)
+
+		// 공중에 맵 밖으로 나가도 OK — 착지 지점(xz)이 경계 밖일 때만 추락
+		if (this.isOnGround && this.isOutsideStageBounds(stage)) {
+			this.beginOutOfBoundsFall();
+		}
+
+		this.syncHudAttachments(stage);
+	}
+
+	private syncHudAttachments(stage: StageQuery): void {
 		if (this.hitCircle) {
 			const gy = stage.getGroundHeightForRing(
 				this.group.position.x,
@@ -425,11 +451,50 @@ export class Player {
 			this.hitCircle.position.y = gy + 0.065;
 			this.hitCircle.position.z = this.group.position.z;
 		}
-		// 머리 위 HUD 위치 동기화
 		if (this.headHud) {
 			const hudY = this.group.position.y + (this.parts.bodyTargetY + 1.2) * this.group.scale.x;
 			this.headHud.position.set(this.group.position.x, hudY, this.group.position.z);
 		}
+	}
+
+	private isOutsideStageBounds(stage: StageQuery): boolean {
+		const b = stage.bounds;
+		const p = this.group.position;
+		return p.x < b.minX || p.x > b.maxX || p.z < b.minZ || p.z > b.maxZ;
+	}
+
+	private beginOutOfBoundsFall(): void {
+		if (this.outOfBoundsFallMs > 0) return;
+		this.outOfBoundsFallMs = 620;
+		this.velocityY = -34;
+		this.dashVelocity.set(0, 0, 0);
+		this.moveVelocity.set(0, 0, 0);
+		this.state = 'idle';
+		EventBus.emit('player-boundary-fall');
+	}
+
+	private completeOutOfBoundsRespawn(stage: StageQuery): void {
+		const b = stage.bounds;
+		const cx = (b.minX + b.maxX) * 0.5;
+		const cz = (b.minZ + b.maxZ) * 0.5;
+		const gy = stage.getGroundHeight(cx, cz, 45);
+		this.group.position.set(cx, gy, cz);
+		this.velocityY = 0;
+		this.isOnGround = true;
+		this.outOfBoundsFallMs = 0;
+		this.jumpsUsed = 0;
+		this.doubleJumpSpinLeft = 0;
+		this.doubleJumpSpinApplied = 0;
+		const dmg = Math.floor(this.stats.maxHp * 0.5);
+		this.stats.hp = Math.max(1, this.stats.hp - dmg);
+		this.hitFlashTimer = 280;
+		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+		EventBus.emit('hp-update', { hp: this.stats.hp, maxHp: this.stats.maxHp });
+		EventBus.emit('damage-number', {
+			pos: this.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+			amount: dmg,
+			type: 'take'
+		});
 	}
 
 	// ── 타이머 ────────────────────────────────────────────────────────────────
@@ -653,10 +718,26 @@ export class Player {
 		}
 	}
 
-	private clampBounds(stage: StageQuery): void {
-		const b = stage.bounds;
-		this.group.position.x = Math.max(b.minX, Math.min(b.maxX, this.group.position.x));
-		this.group.position.z = Math.max(b.minZ, Math.min(b.maxZ, this.group.position.z));
+	/** 공중에선 낮은 장애물이 무시되어 XZ가 박스 안으로 들어간 뒤 착지하면 끼임 → 밀어내고 발밑 지면 재계산 */
+	private resolveObstaclePenetration(stage: StageQuery): void {
+		const COLLISION_R = 0.45;
+		const y = this.group.position.y;
+		const po = stage.pushOutOfObstacles(this.group.position.x, this.group.position.z, y, COLLISION_R);
+		this.group.position.x = po.x;
+		this.group.position.z = po.z;
+		// 상승 중에는 발밑 스냅 금지 (점프 직후 다시 지면에 붙는 버그 방지)
+		if (this.velocityY > 0.38) return;
+
+		const probe = this.group.position.y + 2;
+		const gy = stage.getGroundHeight(this.group.position.x, this.group.position.z, probe);
+		if (this.group.position.y <= gy + 0.1) {
+			this.group.position.y = gy;
+			this.velocityY = 0;
+			this.isOnGround = true;
+			if (this.state === 'jumping') this.state = 'idle';
+		} else {
+			this.isOnGround = false;
+		}
 	}
 
 	// ── 애니메이션 ────────────────────────────────────────────────────────────
