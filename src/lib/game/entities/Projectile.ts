@@ -6,7 +6,8 @@ import {
 } from './playerMissileSheet';
 
 export class Projectile {
-	mesh: THREE.Mesh;
+	/** Mesh 또는 스프라이트 십자( Group ) */
+	mesh: THREE.Object3D;
 	damage: number;
 	alive = true;
 
@@ -54,8 +55,9 @@ export class Projectile {
 			map.offset.set(0, 0);
 			this.missileMap = map;
 
-			// 기본 스케일에서도 잘 보이도록 폭 상향 (스킨 missileScale와 곱)
-			const w = 0.84 * scale;
+			// 단일 평면은 비행축이 카메라 시선과 평행할 때(특히 순수 ±Y) 옆면으로만 보여 사라짐.
+			// 같은 지오/재질로 XY·XZ 두 장을 십자 배치해 모든 방향에서 단면 두께가 일치하도록 함.
+			const w = 0.88 * scale;
 			const h = w * (28 / 40);
 			const geo = new THREE.PlaneGeometry(w, h);
 			const mat = new THREE.MeshBasicMaterial({
@@ -68,8 +70,14 @@ export class Projectile {
 				side: THREE.DoubleSide,
 				fog: true
 			});
-			this.mesh = new THREE.Mesh(geo, mat);
-			this.mesh.renderOrder = 2;
+			const cross = new THREE.Group();
+			const planeA = new THREE.Mesh(geo, mat);
+			const planeB = new THREE.Mesh(geo, mat);
+			planeB.rotation.x = Math.PI / 2;
+			planeA.renderOrder = 2;
+			planeB.renderOrder = 2;
+			cross.add(planeA, planeB);
+			this.mesh = cross;
 		} else {
 			const geo = isPlayer
 				? new THREE.CylinderGeometry(0.08 * scale, 0.13 * scale, 0.65 * scale, 6)
@@ -126,13 +134,24 @@ export class Projectile {
 
 	dispose(scene: THREE.Scene): void {
 		scene.remove(this.mesh);
-		const mat = this.mesh.material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
 		if (this.missileMap) {
 			this.missileMap.dispose();
 			this.missileMap = null;
 		}
-		if (mat instanceof THREE.MeshBasicMaterial) mat.map = null;
-		mat.dispose();
-		this.mesh.geometry.dispose();
+		if (this.useSpriteMissile && this.mesh instanceof THREE.Group) {
+			const first = this.mesh.children[0] as THREE.Mesh | undefined;
+			if (first) {
+				first.geometry.dispose();
+				const mat = first.material as THREE.MeshBasicMaterial;
+				mat.map = null;
+				mat.dispose();
+			}
+		} else {
+			const m = this.mesh as THREE.Mesh;
+			const mat = m.material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
+			if (mat instanceof THREE.MeshBasicMaterial) mat.map = null;
+			mat.dispose();
+			m.geometry.dispose();
+		}
 	}
 }
