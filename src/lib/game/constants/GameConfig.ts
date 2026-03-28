@@ -110,8 +110,22 @@ export const BACKGROUND_PLANE_SUBDIV = 2;
 /** 그 면 전체에 텍스처를 가로·세로 몇 번 **반복**(타일)할지 — `RepeatWrapping` */
 export const BACKGROUND_TEXTURE_REPEAT = 2;
 
-/** 티어 세트 개수 — `static/images/background/background_{1..N}.png` (맵·건물과 동일 티어 인덱스) */
+/** PNG 세트 개수 — `static/images/background/background_{1..N}.png` (맵·건물과 동일 번호 체계) */
 export const BACKGROUND_IMAGE_COUNT = 6;
+
+/**
+ * 진화 F 단계(form 0~8) → 배경·맵·건물 공통 이미지 번호 `_{1..6}.png`
+ * F0–F1 → 1, F2–F3 → 2, F4–F5 → 3, F6 → 4, F7 → 5, F8 → 6
+ */
+export function visualThemeImageIndexFromForm(form: number): number {
+	const f = Math.min(Math.max(Math.floor(form), 0), 8);
+	if (f <= 1) return 1;
+	if (f <= 3) return 2;
+	if (f <= 5) return 3;
+	if (f === 6) return 4;
+	if (f === 7) return 5;
+	return 6;
+}
 
 /** 이 시간(초)까지 생존하면 승리 */
 export const VICTORY_SURVIVAL_SECONDS = 20 * 60;

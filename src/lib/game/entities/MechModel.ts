@@ -644,14 +644,25 @@ export function formForLevel(lv: number): number {
 const FORM_STYLE = [
 	{ body: 0x777777, accent: 0x999999, emissive: 0.00, glowInt: 0.15 },
 	{ body: 0x556677, accent: 0x8899bb, emissive: 0.02, glowInt: 0.35 },
-	{ body: 0x1155bb, accent: 0x3388dd, emissive: 0.06, glowInt: 1.0  },
-	{ body: 0x1144cc, accent: 0x3399ff, emissive: 0.12, glowInt: 1.8  },
+	/** F2 — 초록 */
+	{ body: 0x1a6b38, accent: 0x3dcc66, emissive: 0.06, glowInt: 1.0  },
+	/** F3 — 초록(한 단계 밝게) */
+	{ body: 0x147038, accent: 0x55ee99, emissive: 0.12, glowInt: 1.8  },
 	{ body: 0x0033bb, accent: 0x00ccff, emissive: 0.20, glowInt: 2.6  },
 	{ body: 0x0022aa, accent: 0x00ddff, emissive: 0.28, glowInt: 3.4  },
-	{ body: 0xdd6600, accent: 0xffcc00, emissive: 0.50, glowInt: 4.5  },
+	/** F6 — 보라 */
+	{ body: 0x5a2d8a, accent: 0xb366ff, emissive: 0.50, glowInt: 4.5  },
 	{ body: 0xcc2200, accent: 0xff8800, emissive: 0.80, glowInt: 5.5  },
 	{ body: 0xaa0000, accent: 0xff3300, emissive: 1.20, glowInt: 7.0  },
-];
+] as const;
+
+export type FormStyleRow = (typeof FORM_STYLE)[number];
+
+/** 절차형 메카(EvolvedMechByBase)와 동일한 F 단계 body/accent/emissive/glow */
+export function formStyleRow(form: number): FormStyleRow {
+	const f = Math.min(Math.max(Math.floor(form), 0), 8);
+	return FORM_STYLE[f];
+}
 
 export { createEvolvedModel } from './EvolvedMechByBase';
 

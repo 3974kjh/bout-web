@@ -22,8 +22,10 @@ import {
 	BACKGROUND_PLANE_SUBDIV,
 	BACKGROUND_TEXTURE_REPEAT,
 	computeRunScore,
+	visualThemeImageIndexFromForm,
 	VICTORY_SURVIVAL_SECONDS
 } from '../constants/GameConfig';
+import { formForLevel } from '../entities/MechModel';
 
 /** 배경 4분면 쿼드를 카메라 앞에 둘 거리 */
 const BACKGROUND_QUAD_DISTANCE = 200;
@@ -181,6 +183,7 @@ export class GameEngine {
 		this.setupLights();
 		this.initGame();
 		this.applyDifficultyTheme(this.waveSystem.diffTier);
+		this.syncVisualThemeTextures();
 
 		window.addEventListener('resize', this.resizeHandler);
 		EventBus.on('restart-game', this.restartHandler);
@@ -388,7 +391,8 @@ export class GameEngine {
 			const target = alive[mi % alive.length];
 			const fireY = pp.y + 1.8;
 			const origin = new THREE.Vector3(pp.x, fireY, pp.z);
-			const targetPt = target.group.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+			const aimY = 1.0 + 0.5 * target.config.scale;
+			const targetPt = target.group.position.clone().add(new THREE.Vector3(0, aimY, 0));
 
 			const baseDir = new THREE.Vector3().subVectors(targetPt, origin).normalize();
 			const angleOff = angles[mi] ?? 0;
@@ -456,9 +460,13 @@ export class GameEngine {
 			for (const m of this.monsters) {
 				if (m.isDead() || p.hitIds.has(m.id)) continue;
 				const cx = m.group.position.x;
-				const cy = m.group.position.y + 1.5;
+				const s = m.config.scale;
+				// 고정 +1.5는 소형 기준 — 보스/고스케일은 메시가 위로 크게 뻗어 시각적 피격부(몸통)가
+				// 구 밖으로 나가는 경우가 많음. 중심을 스케일에 맞춰 올려 궤적–판정 정합을 맞춤.
+				const cy = m.group.position.y + 1.2 + 0.52 * s;
 				const cz = m.group.position.z;
-				const hitRadius = 0.8 * u.missileScale * m.config.scale;
+				let hitRadius = 0.8 * u.missileScale * s;
+				if (m.config.isBoss) hitRadius *= 1.08;
 				const ax = prevPos.x, ay = prevPos.y, az = prevPos.z;
 				const bx = p.mesh.position.x, by = p.mesh.position.y, bz = p.mesh.position.z;
 				if (!GameEngine.segmentHitsSphere(ax, ay, az, bx, by, bz, cx, cy, cz, hitRadius)) continue;
@@ -651,6 +659,7 @@ export class GameEngine {
 		this.isLevelUpPaused = true;
 		const cards = getRandomCards(3, this.favoredCardIds);
 		this.player.setLevel(this.levelSystem.level); // 캐릭터 진화
+		this.syncVisualThemeTextures();
 		EventBus.emit('level-up', { level: this.levelSystem.level, cards });
 	}
 
@@ -757,8 +766,6 @@ export class GameEngine {
 			{ bg: 0x180828, fog: 0x180828, fogNear: 60, fogFar: 130, ambient: 0xaa66ff, ambInt: 1.2, dir: 0xcc44ff, dirInt: 2.8 },
 		];
 		const t = themes[tier];
-		this.requestBackgroundTexture(tier, t.bg);
-		this.ensureBackgroundQuads();
 		const fog = this.scene.fog as THREE.Fog;
 		if (fog) { fog.color.setHex(t.fog); fog.near = t.fogNear; fog.far = t.fogFar; }
 		// 조명 업데이트
@@ -770,13 +777,29 @@ export class GameEngine {
 				obj.color.setHex(t.dir); obj.intensity = t.dirInt;
 			}
 		});
-		// 스테이지 구조물 색상
+		// 진화 F 팔레트를 먼저 반영한 뒤 웨이브 티어로 바닥·파사드 틴트 (지붕·상단은 form 기준)
+		this.stage.setEvolutionForm(formForLevel(this.player.getCurrentLevel()));
 		this.stage.setWaveTheme(tier);
 	}
 
-	/** 난이도 티어 → `background_{1+N}.png` (맵·건물과 동일). 한 면을 SUB×SUB으로 쪼개 그 위에 텍스처 타일 반복. */
-	private requestBackgroundTexture(tier: number, fallbackHex: number): void {
-		const index = Math.min(Math.max(0, tier) + 1, BACKGROUND_IMAGE_COUNT);
+	/** 현재 레벨 → 진화 form → 배경·맵·건물 `_{1..6}.png` 동기화 */
+	private syncVisualThemeTextures(): void {
+		this.stage.setEvolutionForm(formForLevel(this.player.getCurrentLevel()));
+		const tier = Math.min(this.waveSystem.diffTier, 4);
+		const themes = [
+			0x8fb0cc, 0x9a5535, 0x1a3a5a, 0x5a1020, 0x180828
+		];
+		const fallbackHex = themes[tier];
+		const form = formForLevel(this.player.getCurrentLevel());
+		const imgIdx = visualThemeImageIndexFromForm(form);
+		this.requestBackgroundTexture(imgIdx, fallbackHex);
+		this.stage.applyVisualThemeImages(imgIdx);
+		this.ensureBackgroundQuads();
+	}
+
+	/** `background_{index}.png` — index는 1..BACKGROUND_IMAGE_COUNT (진화 F 단계에서 결정). 한 면을 SUB×SUB으로 쪼개 타일 반복. */
+	private requestBackgroundTexture(imageIndex: number, fallbackHex: number): void {
+		const index = Math.min(Math.max(1, Math.floor(imageIndex)), BACKGROUND_IMAGE_COUNT);
 		if (index === this.backgroundImageIndex && this.backgroundTexture) {
 			if (this.backgroundQuadGroup?.parent === this.scene) return;
 			this.backgroundLoadingIndex = 0;
@@ -1538,6 +1561,7 @@ export class GameEngine {
 		this.setupLights();
 		this.initGame();
 		this.applyDifficultyTheme(this.waveSystem.diffTier);
+		this.syncVisualThemeTextures();
 	}
 
 	private onResize(): void {

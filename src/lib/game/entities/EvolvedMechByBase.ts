@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three';
 import type { MechBase } from '$lib/domain/types';
-import type { MechParts3D } from './MechModel';
+import { formStyleRow, type MechParts3D } from './MechModel';
 
 /** Player.ts 애니메이션과 동일 — MechModel.MECH_BODY_Y 와 맞출 것 */
 const MECH_BODY_Y = 1.72;
@@ -39,24 +39,12 @@ function legLenForForm(f: number): number {
 	return base * 1.8;
 }
 
-const FORM_STYLE = [
-	{ body: 0x777777, accent: 0x999999, emissive: 0.0, glowInt: 0.15 },
-	{ body: 0x556677, accent: 0x8899bb, emissive: 0.02, glowInt: 0.35 },
-	{ body: 0x1155bb, accent: 0x3388dd, emissive: 0.06, glowInt: 1.0 },
-	{ body: 0x1144cc, accent: 0x3399ff, emissive: 0.12, glowInt: 1.8 },
-	{ body: 0x0033bb, accent: 0x00ccff, emissive: 0.2, glowInt: 2.6 },
-	{ body: 0x0022aa, accent: 0x00ddff, emissive: 0.28, glowInt: 3.4 },
-	{ body: 0xdd6600, accent: 0xffcc00, emissive: 0.5, glowInt: 4.5 },
-	{ body: 0xcc2200, accent: 0xff8800, emissive: 0.8, glowInt: 5.5 },
-	{ body: 0xaa0000, accent: 0xff3300, emissive: 1.2, glowInt: 7.0 }
-];
-
 function makeMats(f: number): {
-	st: (typeof FORM_STYLE)[0];
+	st: ReturnType<typeof formStyleRow>;
 	bodyMat: THREE.MeshStandardMaterial;
 	accentMat: THREE.MeshStandardMaterial;
 } {
-	const st = FORM_STYLE[f];
+	const st = formStyleRow(f);
 	const bodyMat = new THREE.MeshStandardMaterial({
 		color: st.body,
 		roughness: 0.5,
@@ -76,7 +64,7 @@ function makeMats(f: number): {
 
 /** ── 하이퍼슈트: 박스 전용 ───────────────────────────────────────────────── */
 function buildEvolvedHypersuit(f: number, s: number): { group: THREE.Group; parts: MechParts3D } {
-	const st = FORM_STYLE[f];
+	const st = formStyleRow(f);
 	const group = new THREE.Group();
 	const bodyMat = new THREE.MeshStandardMaterial({
 		color: st.body,

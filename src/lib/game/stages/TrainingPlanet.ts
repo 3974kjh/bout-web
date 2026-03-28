@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { StageQuery } from '$lib/domain/types';
+import { formStyleColors } from '../entities/MechModel';
 
 /**
  * 오픈 월드 배틀필드.
@@ -15,9 +16,9 @@ export const WORLD_W = 180;
 export const WORLD_D = 180;
 /** 바닥 맵 이미지 한 타일이 차지하는 월드 XZ 크기 (이미지를 이 크기로 반복 깔음) */
 export const GROUND_MAP_TILE_SIZE = 10;
-/** `static/images/map/map_{1..N}.png` 개수 — 티어에 따라 순서대로 교체 */
+/** `static/images/map/map_{1..N}.png` 개수 — 진화 F 단계에 따라 교체 (GameEngine) */
 export const GROUND_MAP_IMAGE_COUNT = 6;
-/** `static/images/building/building_{1..N}.png` 개수 — 구조물(플랫폼·벽) 텍스처 */
+/** `static/images/building/building_{1..N}.png` 개수 — 맵과 동일 번호 체계 */
 export const BUILDING_IMAGE_COUNT = 6;
 /** 파사드 텍스처 가로·세로 반복 기준(월드 유닛) — 넓은 면에 타일이 반복되도록 */
 const FACADE_REPEAT_UNIT_XZ = 10;
@@ -77,6 +78,10 @@ export class TrainingPlanet implements StageQuery {
 	private buildingLoadingIndex = 0;
 	private obstacleEdgeMats: THREE.MeshStandardMaterial[] = [];
 	private glowMeshes: THREE.Mesh[] = [];
+	/** 캣워크 빔·드럼 띠 등 상부 하이라이트용 재질 (진화 F 색과 맞춤) */
+	private propTopHighlightMats: THREE.MeshStandardMaterial[] = [];
+	/** 플레이어 진화 form 0~8 — 지붕·상단 테두리·소품 상부 색에 사용 */
+	private evolutionForm = 0;
 	/** 미사일 충돌 판정용 장애물 Box3 목록 (platforms와 동일 set) */
 	private obstacleBoxes: THREE.Box3[] = [];
 
@@ -257,7 +262,8 @@ export class TrainingPlanet implements StageQuery {
 		this.groundMesh.receiveShadow = true;
 		scene.add(this.groundMesh);
 
-		this.requestGroundMapTexture(this.lastWaveTier);
+		// 초기 맵 텍스처 — 이후 GameEngine.syncVisualThemeTextures에서 진화 F에 맞게 다시 로드
+		this.requestGroundMapTexture(1);
 
 		const grid = new THREE.GridHelper(WORLD_W, 60, 0x3a3020, 0x2a2216);
 		(grid.material as THREE.Material).opacity = 0.18;
@@ -439,7 +445,7 @@ export class TrainingPlanet implements StageQuery {
 			this.obstacleBoxes.push(wBox);
 		}
 
-		this.requestBuildingTexture(this.lastWaveTier);
+		this.requestBuildingTexture(1);
 	}
 
 	// ── 주변 소품 ───────────────────────────────────────────────────────────────
@@ -472,6 +478,7 @@ export class TrainingPlanet implements StageQuery {
 			b.castShadow = true;
 			b.receiveShadow = true;
 			scene.add(b);
+			this.propTopHighlightMats.push(b.material as THREE.MeshStandardMaterial);
 		}
 
 		// 수직 파이프 (시각적 배경)
@@ -515,14 +522,15 @@ export class TrainingPlanet implements StageQuery {
 			b.castShadow = true;
 			b.receiveShadow = true;
 			scene.add(b);
+			this.propTopHighlightMats.push(b.material as THREE.MeshStandardMaterial);
 		}
 	}
 
 	// ── 웨이브 테마 전환 ─────────────────────────────────────────────────────────
 
-	/** 난이도 티어 → `map_{1+N}.png` (티어 0→map_1 … 티어가 이미지 수를 넘기면 map_N으로 고정) */
-	private requestGroundMapTexture(tier: number): void {
-		const index = Math.min(Math.max(0, tier) + 1, GROUND_MAP_IMAGE_COUNT);
+	/** `map_{index}.png` — index는 1..GROUND_MAP_IMAGE_COUNT (진화 F 단계에서 결정) */
+	private requestGroundMapTexture(imageIndex: number): void {
+		const index = Math.min(Math.max(1, Math.floor(imageIndex)), GROUND_MAP_IMAGE_COUNT);
 		if (index === this.groundMapImageIndex && this.groundMapTexture) return;
 		if (this.groundMapLoadingIndex === index) return;
 
@@ -590,29 +598,67 @@ export class TrainingPlanet implements StageQuery {
 	setWaveTheme(tier: number): void {
 		tier = Math.min(tier, WAVE_THEMES.length - 1);
 		this.lastWaveTier = tier;
-		const t = WAVE_THEMES[tier];
 
 		this.applyGroundWaveTint(tier);
+		this.applyBuildingWaveTint(tier);
+	}
 
-		// 장애물 엣지: 어두운 티어일수록 발광 강도 상승
-		for (const mat of this.obstacleEdgeMats) {
-			mat.color.setHex(t.accent);
-			mat.emissive.setHex(t.emissiveHex);
-			mat.emissiveIntensity = 0.15 + tier * 0.25;
+	/**
+	 * 진화 F 단계 UI/메카와 동일 팔레트(`formStyleColors`)로 지붕·상단 테두리·발광 소품·빔/드럼 띠 색을 맞춤.
+	 * 웨이브 티어는 발광 세기(glowMult)에만 반영.
+	 */
+	setEvolutionForm(form: number): void {
+		this.evolutionForm = Math.min(8, Math.max(0, Math.floor(form)));
+		this.applyFormTopSurfaces();
+	}
+
+	private applyFormTopSurfaces(): void {
+		const f = this.evolutionForm;
+		const { body, accent } = formStyleColors(f);
+		const bodyC = new THREE.Color(body);
+		const accentC = new THREE.Color(accent);
+		const tier = Math.min(this.lastWaveTier, WAVE_THEMES.length - 1);
+		const t = WAVE_THEMES[tier];
+		const white = new THREE.Color(0xffffff);
+
+		const roofCol = bodyC.clone().lerp(accentC, 0.4);
+		const roofEmInt = 0.05 + f * 0.032;
+
+		for (const mesh of this.buildingMeshes) {
+			const mats = mesh.material as THREE.MeshStandardMaterial[];
+			mats[2].color.copy(roofCol.clone().lerp(white, 0.06));
+			mats[2].emissive.copy(accentC);
+			mats[2].emissiveIntensity = roofEmInt;
 		}
 
-		// 발광 소품: glowMult에 따라 emissiveIntensity 증폭
-		const glowColors = [0x003388, 0x883300, 0x0044cc, 0xcc0022, 0x8800cc];
+		for (const mat of this.obstacleEdgeMats) {
+			mat.color.copy(accentC.clone().lerp(bodyC, 0.28).lerp(white, 0.12));
+			mat.emissive.copy(accentC);
+			mat.emissiveIntensity = 0.14 + tier * 0.2 + f * 0.018;
+		}
+
 		for (const mesh of this.glowMeshes) {
 			const mat = mesh.material as THREE.MeshStandardMaterial;
 			if (!mat?.isMeshStandardMaterial) continue;
-			mat.emissive.setHex(glowColors[tier]);
-			mat.emissiveIntensity = t.glowMult;
+			mat.color.copy(accentC.clone().lerp(bodyC, 0.2));
+			mat.emissive.copy(accentC);
+			mat.emissiveIntensity = (0.42 + f * 0.1) * t.glowMult * 0.42;
 		}
 
-		this.applyBuildingWaveTint(tier);
-		this.requestGroundMapTexture(tier);
-		this.requestBuildingTexture(tier);
+		for (const mat of this.propTopHighlightMats) {
+			mat.color.copy(bodyC.clone().lerp(accentC, 0.48).lerp(white, 0.08));
+			mat.emissive.copy(accentC);
+			mat.emissiveIntensity = 0.08 + f * 0.05 + tier * 0.04;
+		}
+	}
+
+	/**
+	 * 바닥 맵·건물 파사드 PNG — `map_{n}`, `building_{n}` (n은 진화 F 단계에 따라 GameEngine에서 전달)
+	 */
+	applyVisualThemeImages(imageIndex: number): void {
+		const idx = Math.min(Math.max(1, Math.floor(imageIndex)), GROUND_MAP_IMAGE_COUNT);
+		this.requestGroundMapTexture(idx);
+		this.requestBuildingTexture(idx);
 	}
 
 	/** 건물 박스 -Y 면: 바닥(맵) 텍스처 — 박스 가로·세로에 맞게 repeat */
@@ -699,10 +745,10 @@ export class TrainingPlanet implements StageQuery {
 		}
 	}
 
-	/** 난이도 티어 → `building_{1+N}.png` — 4면 파사드 + 바닥면은 바닥 맵 세트 */
-	private requestBuildingTexture(tier: number): void {
+	/** `building_{index}.png` — index는 1..BUILDING_IMAGE_COUNT (맵과 동일 번호) */
+	private requestBuildingTexture(imageIndex: number): void {
 		if (this.buildingMeshes.length === 0) return;
-		const index = Math.min(Math.max(0, tier) + 1, BUILDING_IMAGE_COUNT);
+		const index = Math.min(Math.max(1, Math.floor(imageIndex)), BUILDING_IMAGE_COUNT);
 		if (index === this.buildingImageIndex && this.buildingTexture) return;
 		if (this.buildingLoadingIndex === index) return;
 
@@ -783,9 +829,6 @@ export class TrainingPlanet implements StageQuery {
 				}
 			}
 
-			mats[2].color.copy(new THREE.Color(0x020d14).lerp(tint, 0.4));
-			mats[2].emissive.setHex(0x000000);
-
 			if (mats[3].map && this.groundMapTexture) {
 				mats[3].color.copy(gt).lerp(white, 0.55);
 				mats[3].emissive.copy(gt).lerp(white, 0.75);
@@ -799,5 +842,7 @@ export class TrainingPlanet implements StageQuery {
 				mats[3].emissiveIntensity = 0;
 			}
 		}
+
+		this.applyFormTopSurfaces();
 	}
 }
