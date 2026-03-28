@@ -1,4 +1,5 @@
 import type { MonsterConfig } from '$lib/domain/types';
+import { lateGameBrutality } from '../constants/GameConfig';
 
 // ── 기본 적 설정 ─────────────────────────────────────────────────────────────
 
@@ -105,15 +106,19 @@ export class WaveSystem {
 	}
 
 	/** { spawnMonster, spawnBoss } — 동시에 둘 다 true 가능 */
-	update(dt: number, aliveCount: number): { spawnMonster: boolean; spawnBoss: boolean } {
+	update(dt: number, aliveCount: number, playerLevel: number): { spawnMonster: boolean; spawnBoss: boolean } {
 		this.spawnClock += dt;
 		this.bossClock  += dt;
 
 		const spawnBoss = this.bossClock >= BOSS_INTERVAL;
 		if (spawnBoss) this.bossClock -= BOSS_INTERVAL;
 
-		const spawnMonster = this.spawnClock >= this.spawnInterval && aliveCount < this.maxAlive;
-		if (spawnMonster) this.spawnClock -= this.spawnInterval;
+		const brutal = lateGameBrutality(playerLevel);
+		const effInterval = Math.max(0.14, this.spawnInterval * brutal.spawnIntervalMul);
+		const cap = Math.min(100, Math.floor(Math.min(30 + this.bossCount * 12, 100) * brutal.maxAliveMul));
+
+		const spawnMonster = this.spawnClock >= effInterval && aliveCount < cap;
+		if (spawnMonster) this.spawnClock -= effInterval;
 
 		return { spawnMonster, spawnBoss };
 	}

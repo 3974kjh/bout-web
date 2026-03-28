@@ -22,6 +22,7 @@ import {
 	BACKGROUND_PLANE_SUBDIV,
 	BACKGROUND_TEXTURE_REPEAT,
 	computeRunScore,
+	lateGameBrutality,
 	visualThemeImageIndexFromForm,
 	VICTORY_SURVIVAL_SECONDS
 } from '../constants/GameConfig';
@@ -144,7 +145,8 @@ export class GameEngine {
 		const d = args[0] as { pos: THREE.Vector3; dir: THREE.Vector3; damage: number; speed: number };
 		const t = Math.max(0, this.survivalTime);
 		const timeScale = 1 + 0.55 * Math.min(t / VICTORY_SURVIVAL_SECONDS, 1);
-		const spd = d.speed * timeScale;
+		const brutal = lateGameBrutality(this.levelSystem.level);
+		const spd = d.speed * timeScale * brutal.enemyProjectileSpeedMul;
 		this.projectiles.push(new Projectile(this.scene, d.pos.clone(), d.dir.clone(), spd, d.damage, 0xff4400));
 	};
 	private playerHitHandler = (): void => {
@@ -735,11 +737,11 @@ export class GameEngine {
 
 	private updateWaveSystem(dt: number): void {
 		const alive = this.combat.aliveCount();
-		const { spawnMonster, spawnBoss } = this.waveSystem.update(dt, alive);
+		const { spawnMonster, spawnBoss } = this.waveSystem.update(dt, alive, this.levelSystem.level);
 
-		if (spawnMonster) this.spawnMonster(this.waveSystem.getSpawnConfig());
+		if (spawnMonster) this.spawnMonster(this.applyLateGameDifficulty(this.waveSystem.getSpawnConfig()));
 		if (spawnBoss) {
-			this.spawnBoss(this.waveSystem.getBossConfig());
+			this.spawnBoss(this.applyLateGameDifficulty(this.waveSystem.getBossConfig()));
 			EventBus.emit('boss-incoming');
 		}
 		EventBus.emit('monster-count-update', { remaining: this.combat.aliveCount(), total: 0 });
@@ -925,6 +927,24 @@ export class GameEngine {
 	}
 
 	// ─── 스폰 ────────────────────────────────────────────────────────────────────
+
+	/** 레벨 20+ — 스탯·사거리 몬스터 탄속·연사 가속 */
+	private applyLateGameDifficulty(cfg: MonsterConfig): MonsterConfig {
+		const b = lateGameBrutality(this.levelSystem.level);
+		const mul = cfg.isBoss ? b.bossStatMul : b.statMul;
+		if (mul <= 1) return cfg;
+		return {
+			...cfg,
+			hp: Math.round(cfg.hp * mul),
+			attack: Math.round(cfg.attack * mul),
+			defense: Math.round(cfg.defense * mul),
+			speed: Math.min(cfg.speed * (1 + (mul - 1) * 0.26), cfg.isBoss ? 12 : 16),
+			projectileSpeed:
+				cfg.projectileSpeed != null ? cfg.projectileSpeed * (1 + (mul - 1) * 0.22) : undefined,
+			fireRateMs: cfg.fireRateMs != null ? Math.max(220, cfg.fireRateMs * 0.76) : undefined,
+			aoeCooldownMs: cfg.aoeCooldownMs != null ? Math.max(1800, cfg.aoeCooldownMs * 0.86) : undefined
+		};
+	}
 
 	private spawnMonster(config: MonsterConfig): void {
 		const pos = this.getRandomSpawnPos();

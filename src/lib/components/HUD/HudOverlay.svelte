@@ -132,7 +132,7 @@
 			.sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
 	);
 
-	// ── 생존 시간 / 20분 카운트다운 ─────────────────────────────────────────────
+	// ── 생존 시간 / 승리 목표(15분) 카운트다운 ─────────────────────────────────────────────
 	let survivalSeconds = $state(0);
 	function fmtMMSS(totalSec: number): string {
 		const s = Math.max(0, Math.floor(totalSec));
@@ -140,7 +140,7 @@
 		const r = s % 60;
 		return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
 	}
-	/** 경과는 floor(초), 남은 시간은 ceil(목표−경과)초 — 둘의 합이 항상 목표 분(1200초)과 맞음 */
+	/** 경과는 floor(초), 남은 시간은 ceil(목표−경과)초 — 목표는 VICTORY_SURVIVAL_SECONDS */
 	const elapsedWholeSec = $derived(Math.floor(Math.max(0, survivalSeconds)));
 	const remainingWholeSec = $derived(
 		Math.max(0, Math.ceil(VICTORY_SURVIVAL_SECONDS - survivalSeconds - Number.EPSILON))
