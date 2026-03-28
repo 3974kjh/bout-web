@@ -23,6 +23,7 @@ import {
 	DOUBLE_JUMP_FORCE_MULT,
 	playerGltfUrlListForBase,
 	playerUsesSkinnedGltfForBase,
+	proceduralGameplayExtraRotationY,
 	skinnedGltfLoadOptionsForBase
 } from '../constants/GameConfig';
 
@@ -625,7 +626,8 @@ export class Player {
 		this.group.rotation.order = 'YXZ';
 		this.group.rotation.x = 0;
 		this.group.rotation.z = 0;
-		this.group.rotation.y = baseYaw + this.doubleJumpSpinApplied;
+		this.group.rotation.y =
+			baseYaw + this.doubleJumpSpinApplied + proceduralGameplayExtraRotationY(this.mechBase);
 
 		// ── 대쉬 속도 적용 (감속하며 소멸) ────────────────────────────────────
 		if (this.dashVelocity.lengthSq() > 0.04) {

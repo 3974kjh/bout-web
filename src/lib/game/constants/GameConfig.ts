@@ -88,6 +88,18 @@ export function skinnedGltfLoadOptionsForBase(
 	return { modelRotationY: Math.PI, targetHeight: 2.85 };
 }
 
+/**
+ * `PLAYER_USE_SKINNED_GLTF` 가 false 일 때 필드(Player)에서만 절차 메쉬 기체의 시각적 전방을 뒤짐.
+ * 하이퍼슈트·아조나스·게렌은 메쉬 축이 다른 기체와 달라 `skinnedGltfLoadOptionsForBase` 의 gameplay/preview 반전과 같은 역할.
+ */
+export function proceduralGameplayExtraRotationY(mechBase: MechBase): number {
+	if (PLAYER_USE_SKINNED_GLTF) return 0;
+	if (mechBase === 'hypersuit' || mechBase === 'azonas-v' || mechBase === 'geren') {
+		return Math.PI;
+	}
+	return 0;
+}
+
 // ── 게임 오버 점수 (정수 합산) ───────────────────────────────────────────────
 export type ScoreBossKind = 'bear' | 'wolf' | 'dragon' | 'tiger' | 'ironlord';
 
@@ -128,7 +140,39 @@ export function visualThemeImageIndexFromForm(form: number): number {
 }
 
 /** 이 시간(초)까지 생존하면 승리 */
-export const VICTORY_SURVIVAL_SECONDS = 20 * 60;
+export const VICTORY_SURVIVAL_SECONDS = 15 * 60;
+
+/**
+ * 이 레벨을 **초과**하면(20+) 일반·보스 스폰·스탯·적 탄속이 급격히 강화된다.
+ */
+export const LEVEL_BRUTAL_AFTER = 19;
+
+/** 레벨 21+ 극난이도 배율 — 스폰·스탯·보스·탄속 */
+export function lateGameBrutality(level: number): {
+	statMul: number;
+	spawnIntervalMul: number;
+	bossStatMul: number;
+	maxAliveMul: number;
+	enemyProjectileSpeedMul: number;
+} {
+	if (level <= LEVEL_BRUTAL_AFTER) {
+		return {
+			statMul: 1,
+			spawnIntervalMul: 1,
+			bossStatMul: 1,
+			maxAliveMul: 1,
+			enemyProjectileSpeedMul: 1
+		};
+	}
+	const steps = Math.min(level - LEVEL_BRUTAL_AFTER, 30);
+	return {
+		statMul: 1.72 + steps * 0.065,
+		spawnIntervalMul: 0.34,
+		bossStatMul: 1.58 + steps * 0.045,
+		maxAliveMul: 1.24,
+		enemyProjectileSpeedMul: 1.28 + steps * 0.018
+	};
+}
 
 /** 보스 처치 항 가중치 (가장 큼) */
 export const SCORE_W_BOSS = 1.35;
