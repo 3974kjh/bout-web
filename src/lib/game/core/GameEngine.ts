@@ -34,6 +34,11 @@ const BACKGROUND_QUAD_DISTANCE = 200;
 
 type BossAoeKind = NonNullable<MonsterConfig['bossAnimalType']>;
 
+export type GameEngineOptions = {
+	/** 첫 `renderer.render` 직후 1회 — 초기 로딩 UI 해제용 */
+	onFirstFrameRendered?: () => void;
+};
+
 export class GameEngine {
 	private renderer: THREE.WebGLRenderer;
 	private scene: THREE.Scene;
@@ -128,6 +133,9 @@ export class GameEngine {
 
 	private animId = 0;
 	private container: HTMLElement;
+	private onFirstFrameRendered?: () => void;
+	private firstFrameRenderedEmitted = false;
+	private firstFrameNotifyRaf = 0;
 
 	private backgroundTexture: THREE.Texture | null = null;
 	private backgroundImageIndex = 0;
@@ -167,8 +175,9 @@ export class GameEngine {
 		this.isEscapePaused = !!(args[0] as { paused: boolean }).paused;
 	};
 
-	constructor(container: HTMLElement) {
+	constructor(container: HTMLElement, options?: GameEngineOptions) {
 		this.container = container;
+		this.onFirstFrameRendered = options?.onFirstFrameRendered;
 
 		this.renderer = new THREE.WebGLRenderer({ antialias: true });
 		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -293,55 +302,80 @@ export class GameEngine {
 
 	private animate = (): void => {
 		this.animId = requestAnimationFrame(this.animate);
-		const dt = Math.min(this.clock.getDelta(), 0.05);
+		try {
+			const dt = Math.min(this.clock.getDelta(), 0.05);
 
-		if (!this.isGameOver && !this.isLevelUpPaused && !this.isEscapePaused) {
-			this.simFrame++;
-			this.input.update();
-			this.player.update(dt, this.input, this.stage);
+			if (!this.isGameOver && !this.isLevelUpPaused && !this.isEscapePaused) {
+				this.simFrame++;
+				this.input.update();
+				this.player.update(dt, this.input, this.stage);
 
-			// 생존 시간 적산 + HUD emit (500ms 주기)
-			this.survivalTime += dt;
-			this.survivalEmitTimer += dt * 1000;
-			if (this.survivalEmitTimer >= 500) {
-				this.survivalEmitTimer -= 500;
-				EventBus.emit('survival-time-update', { seconds: this.survivalTime });
-			}
-
-			let mi = 0;
-			for (const m of this.monsters) {
-				if (!m.isDead()) {
-					m.update(dt, this.player.group.position, this.stage, this.simFrame + mi);
-					mi++;
+				// 생존 시간 적산 + HUD emit (500ms 주기)
+				this.survivalTime += dt;
+				this.survivalEmitTimer += dt * 1000;
+				if (this.survivalEmitTimer >= 500) {
+					this.survivalEmitTimer -= 500;
+					EventBus.emit('survival-time-update', { seconds: this.survivalTime });
 				}
+
+				let mi = 0;
+				for (const m of this.monsters) {
+					if (!m.isDead()) {
+						m.update(dt, this.player.group.position, this.stage, this.simFrame + mi);
+						mi++;
+					}
+				}
+
+				this.combat.update();
+				this.updateAutoFire(dt);
+				this.updatePlayerProjectiles(dt);
+				this.updateEnemyProjectiles(dt);
+				this.updateExpShards(dt);
+				this.updatePlatformLoot(dt);
+				this.handleDeaths();
+				this.updateWaveSystem(dt);
+				this.updateKillEffects(dt);
+				this.updateMissileHitEffects(dt);
+				this.updateKillStreak(dt);
+				this.updateAoeEffects(dt);
+				this.updateBossStrikeAnims(dt);
+				this.separateMonsters();
+				this.checkEnd();
+			} else if (!this.isGameOver && this.isLevelUpPaused) {
+				// 레벨업 중: 입력 처리만 (플레이어/몬스터 멈춤)
+				this.input.update();
 			}
 
-			this.combat.update();
-			this.updateAutoFire(dt);
-			this.updatePlayerProjectiles(dt);
-			this.updateEnemyProjectiles(dt);
-			this.updateExpShards(dt);
-			this.updatePlatformLoot(dt);
-			this.handleDeaths();
-			this.updateWaveSystem(dt);
-			this.updateKillEffects(dt);
-			this.updateMissileHitEffects(dt);
-			this.updateKillStreak(dt);
-			this.updateAoeEffects(dt);
-			this.updateBossStrikeAnims(dt);
-			this.separateMonsters();
-			this.checkEnd();
-		} else if (!this.isGameOver && this.isLevelUpPaused) {
-			// 레벨업 중: 입력 처리만 (플레이어/몬스터 멈춤)
-			this.input.update();
+			this.camCtrl.update(dt, this.player.group.position);
+			this.syncBackgroundQuadsToCamera();
+			try {
+				this.renderer.render(this.scene, this.camera);
+			} catch {
+				/* WebGL 컨텍스트 손실 등 */
+			}
+			this.damageNumbers.update(dt);
+			this.updateMinimap(dt);
+		} finally {
+			/* 첫 프레임에서 위 로직이 throw 해도 부트 UI는 해제 */
+			this.scheduleFirstFrameRenderedNotify();
 		}
-
-		this.camCtrl.update(dt, this.player.group.position);
-		this.syncBackgroundQuadsToCamera();
-		this.renderer.render(this.scene, this.camera);
-		this.damageNumbers.update(dt);
-		this.updateMinimap(dt);
 	};
+
+	/** 첫 프레임 이후 1회. 동기 스택(생성자)에서 호출돼도 다음 paint 전에 UI가 반영되도록 rAF로 넘김 */
+	private scheduleFirstFrameRenderedNotify(): void {
+		if (this.firstFrameRenderedEmitted || !this.onFirstFrameRendered) return;
+		this.firstFrameRenderedEmitted = true;
+		const cb = this.onFirstFrameRendered;
+		this.onFirstFrameRendered = undefined;
+		this.firstFrameNotifyRaf = requestAnimationFrame(() => {
+			this.firstFrameNotifyRaf = 0;
+			try {
+				cb();
+			} catch {
+				/* noop */
+			}
+		});
+	}
 
 	// ─── 미니맵 ──────────────────────────────────────────────────────────────────
 
@@ -1740,6 +1774,7 @@ export class GameEngine {
 
 	destroy(): void {
 		cancelAnimationFrame(this.animId);
+		if (this.firstFrameNotifyRaf) cancelAnimationFrame(this.firstFrameNotifyRaf);
 		window.removeEventListener('resize', this.resizeHandler);
 		EventBus.off('restart-game', this.restartHandler);
 		EventBus.off('boss-defeated', this.bossDefeatedHandler);

@@ -161,6 +161,10 @@
 		"prev": "Prev",
 		"next": "Next"
 	},
+	"game": {
+		"bootLoading": "Preparing the battlefield…",
+		"bootAria": "Loading the 3D scene"
+	},
 	"mech": {
 		"hypersuit": {
 			"name": "Hypersuit",
