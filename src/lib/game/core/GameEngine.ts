@@ -540,7 +540,8 @@ export class GameEngine {
 		const prevPos = this._scratchPrevProj;
 		this.rebuildMonsterProjBuckets();
 		const CELL = 5;
-		const SEG_PAD = 4.8;
+		// looseR 최대(대형 보스·미사일 스케일)보다 커야 셀 스킵 없이 전부 검사
+		const SEG_PAD = 8.5;
 		for (let i = this.playerProjectiles.length - 1; i >= 0; i--) {
 			const p = this.playerProjectiles[i];
 			prevPos.copy(p.mesh.position);
@@ -578,11 +579,13 @@ export class GameEngine {
 						if (m.isDead() || p.hitIds.has(m.id)) continue;
 						const cx = m.group.position.x;
 						const s = m.config.scale;
-						const cy = m.group.position.y + 1.2 + 0.52 * s;
+						// 발~머리 중간 쪽으로 약간 낮춰, 키 큰 메시와 궤적 높이 어긋남 완화
+						const cy = m.group.position.y + 1.05 + 0.58 * s;
 						const cz = m.group.position.z;
-						let hitRadius = 0.8 * u.missileScale * s;
-						if (m.config.isBoss) hitRadius *= 1.08;
-						const looseR = hitRadius + 1.4;
+						// 형체에 닿는 느낌 — 기존 0.8s 대비 피격 구 확대 (스케일·미사일 크기 반영)
+						let hitRadius = (1.05 + 0.12 * Math.min(s, 2.2)) * u.missileScale * s;
+						if (m.config.isBoss) hitRadius *= 1.14;
+						const looseR = hitRadius + 1.85;
 						if (GameEngine.segmentDistSqXZ(ax, az, bx, bz, cx, cz) > looseR * looseR) {
 							continue;
 						}
