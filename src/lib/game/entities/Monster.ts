@@ -128,7 +128,8 @@ export class Monster {
 		this.hpBarTex.needsUpdate = true;
 	}
 
-	update(dt: number, targetPos: THREE.Vector3, stage: StageQuery): void {
+	/** @param frameTag `simFrame + monsterIndex` — 원거리 일반몹 시각 연산(링·애니) 격프레임 */
+	update(dt: number, targetPos: THREE.Vector3, stage: StageQuery, frameTag = 0): void {
 		if (this.hp <= 0) return;
 		const ms = dt * 1000;
 		this.stateTimer += ms;
@@ -441,11 +442,13 @@ export class Monster {
 			}
 		}
 
-		if (dist < 30) {
+		const animFull =
+			dist < 30 && (this.config.isBoss || dist < 17 || (frameTag & 1) === 0);
+		if (animFull) {
 			this.animateMonster(isQuickAttacker, isHeavyAttacker);
 		}
 		this.updateHPBar();
-		this.updateDangerRing(stage, dist);
+		this.updateDangerRing(stage, dist, frameTag);
 	}
 
 	/** 타겟 근처 랜덤 위치에 AOE 발사 (scaleMult: 반경/속도 배율) */
@@ -593,12 +596,20 @@ export class Monster {
 		this.drawHpBar(ratio);
 	}
 
-	private updateDangerRing(stage: StageQuery, horizontalDist: number): void {
+	private updateDangerRing(stage: StageQuery, horizontalDist: number, frameTag = 0): void {
 		// 원거리는 링이 거의 안 보이므로 getGroundHeight 2회/프레임 생략 (다수 몹 시 CPU 절감)
 		if (horizontalDist > 36) {
 			const mat = this.dangerRing.material as THREE.MeshBasicMaterial;
 			mat.opacity += (0 - mat.opacity) * 0.14;
 			this.dangerRing.position.y = this.dangerRingBaseY;
+			return;
+		}
+		// 중거리 일반몹: 지면 샘플링 격프레임 (보스·근접은 매 프레임)
+		if (!this.config.isBoss && horizontalDist > 16 && (frameTag & 1)) {
+			const mat = this.dangerRing.material as THREE.MeshBasicMaterial;
+			const isAttacking = this.aiState === 'attack' || this.aiState === 'rangedAttack';
+			const targetOpacity = isAttacking ? 0.7 : this.aiState === 'chase' ? 0.18 : 0;
+			mat.opacity += (targetOpacity - mat.opacity) * 0.12;
 			return;
 		}
 		// 발판 상면과 발 좌표가 소수 프레임 어긋나도, 월드에서 링이 항상 지면·발판 위에 깔리도록 보정

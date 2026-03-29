@@ -93,6 +93,8 @@ const BOSS_TEMPLATES: Array<Omit<MonsterConfig, 'hp' | 'attack' | 'defense'>> = 
 // 일반 몬스터는 보스 유무와 무관하게 상시 소환
 
 const BOSS_INTERVAL = 30; // 30초마다 보스 등장
+/** 동시 생존 일반 적 상한 (성능·가독성) — brutal.maxAliveMul과 함께 적용 */
+const ABS_MAX_ALIVE = 72;
 
 export class WaveSystem {
 	bossCount = 0;  // 처치한 보스 수 (난이도 지표)
@@ -114,8 +116,15 @@ export class WaveSystem {
 		const bossEvery = BOSS_INTERVAL * brutal.bossSpawnIntervalScale;
 		const spawnBoss = this.bossClock >= bossEvery;
 		if (spawnBoss) this.bossClock -= bossEvery;
-		const effInterval = Math.max(0.14, this.spawnInterval * brutal.spawnIntervalMul);
-		const cap = Math.min(100, Math.floor(Math.min(30 + this.bossCount * 12, 100) * brutal.maxAliveMul));
+		let intervalMul = 1;
+		if (aliveCount > 40) intervalMul = 1.12;
+		if (aliveCount > 50) intervalMul = 1.24;
+		if (aliveCount > 58) intervalMul = 1.38;
+		const effInterval = Math.max(0.14, this.spawnInterval * brutal.spawnIntervalMul * intervalMul);
+		const cap = Math.min(
+			ABS_MAX_ALIVE,
+			Math.floor(Math.min(30 + this.bossCount * 12, ABS_MAX_ALIVE) * brutal.maxAliveMul)
+		);
 
 		const spawnMonster = this.spawnClock >= effInterval && aliveCount < cap;
 		if (spawnMonster) this.spawnClock -= effInterval;
@@ -124,7 +133,7 @@ export class WaveSystem {
 	}
 
 	get maxAlive(): number {
-		return Math.min(30 + this.bossCount * 12, 100);
+		return Math.min(30 + this.bossCount * 12, ABS_MAX_ALIVE);
 	}
 
 	onBossKilled(): void {

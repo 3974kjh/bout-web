@@ -4,7 +4,7 @@ import { CameraController } from './CameraController';
 import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { Projectile } from '../entities/Projectile';
-import { ExpShard } from '../entities/ExpShard';
+import { ExpShardManager } from '../entities/ExpShardManager';
 import { PlatformHealthPotion, PlatformCardCache } from '../entities/PlatformLoot';
 import { CombatSystem } from '../systems/CombatSystem';
 import { LevelSystem } from '../systems/LevelSystem';
@@ -47,7 +47,7 @@ export class GameEngine {
 	private monsters: Monster[] = [];
 	private projectiles: Projectile[] = [];      // 적 발사체
 	private playerProjectiles: Projectile[] = []; // 플레이어 자동 미사일
-	private expShards: ExpShard[] = [];
+	private expShardManager!: ExpShardManager;
 
 	private stage!: TrainingPlanet;
 	private combat!: CombatSystem;
@@ -94,6 +94,8 @@ export class GameEngine {
 	private simFrame = 0;
 	private separateCellBuckets = new Map<string, number[]>();
 	private separateBucketPool: number[][] = [];
+	private monsterProjCellBuckets = new Map<string, number[]>();
+	private monsterProjBucketPool: number[][] = [];
 
 	// 보스 AOE: 고정 외곽 링 + 중심에서 바깥으로 채워지는 원, 타격 시 보스별 연출
 	private aoeEffects: Array<{
@@ -244,7 +246,7 @@ export class GameEngine {
 		this.monsters = [];
 		this.projectiles = [];
 		this.playerProjectiles = [];
-		this.expShards = [];
+		this.expShardManager = new ExpShardManager(this.scene);
 		this.killEffects = [];
 		this.missileHitEffects = [];
 		this.killStreak = 0;
@@ -306,8 +308,12 @@ export class GameEngine {
 				EventBus.emit('survival-time-update', { seconds: this.survivalTime });
 			}
 
+			let mi = 0;
 			for (const m of this.monsters) {
-				if (!m.isDead()) m.update(dt, this.player.group.position, this.stage);
+				if (!m.isDead()) {
+					m.update(dt, this.player.group.position, this.stage, this.simFrame + mi);
+					mi++;
+				}
 			}
 
 			this.combat.update();
@@ -504,10 +510,37 @@ export class GameEngine {
 		return dx * dx + dz * dz;
 	}
 
+	/** 플레이어 투사체 광역판정용 — XZ 셀 버킷 (프레임당 1회 채움) */
+	private rebuildMonsterProjBuckets(): void {
+		const CELL = 5;
+		const map = this.monsterProjCellBuckets;
+		for (const arr of map.values()) {
+			arr.length = 0;
+			this.monsterProjBucketPool.push(arr);
+		}
+		map.clear();
+		for (let mi = 0; mi < this.monsters.length; mi++) {
+			const m = this.monsters[mi];
+			if (m.isDead()) continue;
+			const ix = Math.floor(m.group.position.x / CELL);
+			const iz = Math.floor(m.group.position.z / CELL);
+			const key = ix + ',' + iz;
+			let bucket = map.get(key);
+			if (!bucket) {
+				bucket = this.monsterProjBucketPool.pop() ?? [];
+				map.set(key, bucket);
+			}
+			bucket.push(mi);
+		}
+	}
+
 	private updatePlayerProjectiles(dt: number): void {
 		const u = this.player.upgrades;
 		const canPierceObstacle = u.piercingCount > 0;
 		const prevPos = this._scratchPrevProj;
+		this.rebuildMonsterProjBuckets();
+		const CELL = 5;
+		const SEG_PAD = 4.8;
 		for (let i = this.playerProjectiles.length - 1; i >= 0; i--) {
 			const p = this.playerProjectiles[i];
 			prevPos.copy(p.mesh.position);
@@ -525,58 +558,68 @@ export class GameEngine {
 				}
 			}
 
-			for (const m of this.monsters) {
-				if (m.isDead() || p.hitIds.has(m.id)) continue;
-				const cx = m.group.position.x;
-				const s = m.config.scale;
-				// 고정 +1.5는 소형 기준 — 보스/고스케일은 메시가 위로 크게 뻗어 시각적 피격부(몸통)가
-				// 구 밖으로 나가는 경우가 많음. 중심을 스케일에 맞춰 올려 궤적–판정 정합을 맞춤.
-				const cy = m.group.position.y + 1.2 + 0.52 * s;
-				const cz = m.group.position.z;
-				let hitRadius = 0.8 * u.missileScale * s;
-				if (m.config.isBoss) hitRadius *= 1.08;
-				const ax = prevPos.x, ay = prevPos.y, az = prevPos.z;
-				const bx = p.mesh.position.x, by = p.mesh.position.y, bz = p.mesh.position.z;
-				const looseR = hitRadius + 1.4;
-				if (
-					GameEngine.segmentDistSqXZ(ax, az, bx, bz, cx, cz) > looseR * looseR
-				) {
-					continue;
-				}
-				if (!GameEngine.segmentHitsSphere(ax, ay, az, bx, by, bz, cx, cy, cz, hitRadius)) continue;
+			const ax = prevPos.x,
+				ay = prevPos.y,
+				az = prevPos.z;
+			const bx = p.mesh.position.x,
+				by = p.mesh.position.y,
+				bz = p.mesh.position.z;
+			const minIx = Math.floor((Math.min(ax, bx) - SEG_PAD) / CELL);
+			const maxIx = Math.floor((Math.max(ax, bx) + SEG_PAD) / CELL);
+			const minIz = Math.floor((Math.min(az, bz) - SEG_PAD) / CELL);
+			const maxIz = Math.floor((Math.max(az, bz) + SEG_PAD) / CELL);
 
-				// 히트!
-				p.hitIds.add(m.id);
-				const isCrit = Math.random() < 0.15; // 15% 크리티컬
-				const dmg = isCrit ? p.damage * 2 : p.damage;
-				const knockDir = new THREE.Vector3()
-					.subVectors(m.group.position, p.mesh.position)
-					.setY(0)
-					.normalize();
-				m.takeDamage(dmg, knockDir, false);
+			projMonsterScan: for (let cix = minIx; cix <= maxIx; cix++) {
+				for (let ciz = minIz; ciz <= maxIz; ciz++) {
+					const bucket = this.monsterProjCellBuckets.get(cix + ',' + ciz);
+					if (!bucket) continue;
+					for (const mi of bucket) {
+						const m = this.monsters[mi];
+						if (m.isDead() || p.hitIds.has(m.id)) continue;
+						const cx = m.group.position.x;
+						const s = m.config.scale;
+						const cy = m.group.position.y + 1.2 + 0.52 * s;
+						const cz = m.group.position.z;
+						let hitRadius = 0.8 * u.missileScale * s;
+						if (m.config.isBoss) hitRadius *= 1.08;
+						const looseR = hitRadius + 1.4;
+						if (GameEngine.segmentDistSqXZ(ax, az, bx, bz, cx, cz) > looseR * looseR) {
+							continue;
+						}
+						if (!GameEngine.segmentHitsSphere(ax, ay, az, bx, by, bz, cx, cy, cz, hitRadius))
+							continue;
 
-				const toM = new THREE.Vector3().subVectors(p.mesh.position, new THREE.Vector3(cx, cy, cz));
-				if (toM.lengthSq() < 1e-8) toM.set(0, 1, 0);
-				else toM.normalize();
-				const hitPos = new THREE.Vector3(cx, cy, cz).addScaledVector(toM, hitRadius);
-				this.spawnMissileHitImpact(hitPos);
+						p.hitIds.add(m.id);
+						const isCrit = Math.random() < 0.15;
+						const dmg = isCrit ? p.damage * 2 : p.damage;
+						const knockDir = new THREE.Vector3()
+							.subVectors(m.group.position, p.mesh.position)
+							.setY(0)
+							.normalize();
+						m.takeDamage(dmg, knockDir, false);
 
-				EventBus.emit('damage-number', {
-					pos: m.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
-					amount: dmg,
-					type: isCrit ? 'crit' : 'deal'
-				});
-				if (isCrit) this.camCtrl.shake(0.18, 120);
+						const toM = new THREE.Vector3().subVectors(p.mesh.position, new THREE.Vector3(cx, cy, cz));
+						if (toM.lengthSq() < 1e-8) toM.set(0, 1, 0);
+						else toM.normalize();
+						const hitPos = new THREE.Vector3(cx, cy, cz).addScaledVector(toM, hitRadius);
+						this.spawnMissileHitImpact(hitPos);
 
-				// 폭발
-				if (u.isExplosive) this.triggerExplosion(p.mesh.position.clone(), u.explosionRadius, dmg);
+						EventBus.emit('damage-number', {
+							pos: m.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+							amount: dmg,
+							type: isCrit ? 'crit' : 'deal'
+						});
+						if (isCrit) this.camCtrl.shake(0.18, 120);
 
-				// 관통 처리
-				if (p.pierceLeft > 0) {
-					p.pierceLeft--;
-				} else {
-					p.alive = false;
-					break;
+						if (u.isExplosive) this.triggerExplosion(p.mesh.position.clone(), u.explosionRadius, dmg);
+
+						if (p.pierceLeft > 0) {
+							p.pierceLeft--;
+						} else {
+							p.alive = false;
+							break projMonsterScan;
+						}
+					}
 				}
 			}
 		}
@@ -645,17 +688,11 @@ export class GameEngine {
 	private updateExpShards(dt: number): void {
 		const pp = this.player.group.position;
 		const u = this.player.upgrades;
-		for (let i = this.expShards.length - 1; i >= 0; i--) {
-			const shard = this.expShards[i];
-			const collected = shard.update(dt, pp, u.collectRange, u.magnetRange);
-			if (collected) {
-				const leveled = this.levelSystem.addExp(shard.value);
-				this.emitExpUpdate();
-				shard.dispose(this.scene);
-				this.expShards.splice(i, 1);
-				if (leveled) this.triggerLevelUp();
-			}
-		}
+		this.expShardManager.update(dt, pp, u.collectRange, u.magnetRange, (value) => {
+			const leveled = this.levelSystem.addExp(value);
+			this.emitExpUpdate();
+			if (leveled) this.triggerLevelUp();
+		});
 	}
 
 	// ─── 발판 체력 포션 / 카드 보급 ───────────────────────────────────────────────
@@ -767,17 +804,16 @@ export class GameEngine {
 				const baseExp = Math.max(3, Math.floor(m.maxHp / 8));
 				const numShards = m.config.isBoss ? 8 : Math.min(3, Math.ceil(m.config.scale));
 				const expPerShard = m.config.isBoss ? Math.floor(m.maxHp * 0.5 / numShards) : baseExp;
+				const px = m.group.position.x;
+				const pz = m.group.position.z;
 				for (let s = 0; s < numShards; s++) {
-					const offset = new THREE.Vector3(
-						(Math.random() - 0.5) * 2.5,
-						0,
-						(Math.random() - 0.5) * 2.5
-					);
-					this.expShards.push(new ExpShard(
-						this.scene,
-						m.group.position.clone().add(offset),
-						expPerShard
-					));
+					const ox = (Math.random() - 0.5) * 2.5;
+					const oz = (Math.random() - 0.5) * 2.5;
+					if (!this.expShardManager.spawn(px + ox, pz + oz, expPerShard)) {
+						const leveled = this.levelSystem.addExp(expPerShard);
+						this.emitExpUpdate();
+						if (leveled) this.triggerLevelUp();
+					}
 				}
 
 				if (m.config.isBoss) {
@@ -1641,7 +1677,7 @@ export class GameEngine {
 		EventBus.off('boss-aoe-request', this.onBossAoeRequest);
 		for (const p of this.projectiles) p.dispose(this.scene);
 		for (const p of this.playerProjectiles) p.dispose(this.scene);
-		for (const s of this.expShards) s.dispose(this.scene);
+		this.expShardManager.dispose(this.scene);
 		for (const fx of this.bossStrikeAnims) {
 			for (const m of fx.meshes) {
 				this.scene.remove(m);
@@ -1668,7 +1704,6 @@ export class GameEngine {
 		this.platformCardCaches = [];
 		this.projectiles = [];
 		this.playerProjectiles = [];
-		this.expShards = [];
 		this.damageNumbers.clear();
 		while (this.scene.children.length > 0) this.scene.remove(this.scene.children[0]);
 		this.setupLights();
@@ -1738,7 +1773,7 @@ export class GameEngine {
 		this.damageNumbers.destroy();
 		for (const p of this.projectiles) p.dispose(this.scene);
 		for (const p of this.playerProjectiles) p.dispose(this.scene);
-		for (const s of this.expShards) s.dispose(this.scene);
+		this.expShardManager.dispose(this.scene);
 		for (const ef of this.missileHitEffects) {
 			this.scene.remove(ef.mesh);
 			ef.mesh.geometry.dispose();

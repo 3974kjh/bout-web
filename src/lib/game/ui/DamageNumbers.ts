@@ -9,12 +9,15 @@ interface Entry {
 
 const LIFETIME_MS = 1100;
 const RISE_SPEED = 2.8; // world units per second
+/** 동시 DOM 노드 상한 — 다수 피격 시 레이아웃·GC 부담 완화 */
+const MAX_ENTRIES = 48;
 
 export class DamageNumbers {
 	private overlay: HTMLElement;
 	private camera: THREE.PerspectiveCamera;
 	private canvas: HTMLCanvasElement;
 	private entries: Entry[] = [];
+	private readonly _ndcScratch = new THREE.Vector3();
 
 	private listener = (...args: unknown[]): void => {
 		const d = args[0] as { pos: THREE.Vector3; amount: number; type: 'deal' | 'take' | 'heal' | 'crit' };
@@ -59,6 +62,10 @@ export class DamageNumbers {
 		].join(';');
 
 		this.overlay.appendChild(el);
+		if (this.entries.length >= MAX_ENTRIES) {
+			const victim = this.entries.shift()!;
+			victim.el.remove();
+		}
 		// Offset position so numbers start just above the hit point
 		this.entries.push({
 			el,
@@ -80,7 +87,7 @@ export class DamageNumbers {
 			const alpha = t < 0.35 ? 1 : 1 - (t - 0.35) / 0.65;
 			const scale = Math.min(1.2, t * 12); // pop-in scale
 
-			const ndc = e.pos.clone().project(this.camera);
+			const ndc = this._ndcScratch.copy(e.pos).project(this.camera);
 			if (ndc.z <= 1) {
 				const x = (ndc.x * 0.5 + 0.5) * cw;
 				const y = (-ndc.y * 0.5 + 0.5) * ch;
