@@ -60,12 +60,9 @@ export class GameEngine {
 	private playerFireTimer = 0;
 	private minimapTimer = 0;
 
-	// 킬 연속 처치 & 오버드라이브
+	// 킬 연속 처치
 	private killStreak = 0;
 	private killStreakTimer = 0;       // 연속 처치 리셋 타이머 (ms)
-	private overdriveTimer = 0;        // 오버드라이브 남은 시간 (ms)
-	private recentShardCount = 0;      // 최근 5초 내 수집 조각 수
-	private shardBurstTimer = 0;       // 조각 수집 집계 창 (ms)
 	private killEffects: { mesh: THREE.Mesh; life: number }[] = [];
 	private missileHitEffects: { mesh: THREE.Mesh; life: number }[] = [];
 	private normalMonsterKills = 0;
@@ -244,9 +241,6 @@ export class GameEngine {
 		this.missileHitEffects = [];
 		this.killStreak = 0;
 		this.killStreakTimer = 0;
-		this.overdriveTimer = 0;
-		this.recentShardCount = 0;
-		this.shardBurstTimer = 0;
 		this.waveSystem = new WaveSystem();
 		this.levelSystem = new LevelSystem();
 		this.survivalTime = 0;
@@ -315,7 +309,7 @@ export class GameEngine {
 			this.updateWaveSystem(dt);
 			this.updateKillEffects(dt);
 			this.updateMissileHitEffects(dt);
-			this.updateOverdrive(dt);
+			this.updateKillStreak(dt);
 			this.updateAoeEffects(dt);
 			this.updateBossStrikeAnims(dt);
 			this.separateMonsters();
@@ -367,7 +361,7 @@ export class GameEngine {
 
 	private updateAutoFire(dt: number): void {
 		const u = this.player.upgrades;
-		const effectiveRate = this.overdriveTimer > 0 ? u.fireRateMs * 0.5 : u.fireRateMs;
+		const effectiveRate = u.fireRateMs;
 		this.playerFireTimer += dt * 1000;
 		if (this.playerFireTimer < effectiveRate) return;
 		this.playerFireTimer -= effectiveRate;
@@ -579,11 +573,6 @@ export class GameEngine {
 				this.emitExpUpdate();
 				shard.dispose(this.scene);
 				this.expShards.splice(i, 1);
-				// 오버드라이브 집계
-				this.recentShardCount++;
-				if (this.recentShardCount >= 15 && this.overdriveTimer <= 0) {
-					this.activateOverdrive();
-				}
 				if (leveled) this.triggerLevelUp();
 			}
 		}
@@ -1105,46 +1094,13 @@ export class GameEngine {
 		}
 	}
 
-	// ─── 오버드라이브 ────────────────────────────────────────────────────────────
-
-	private activateOverdrive(): void {
-		this.overdriveTimer = 6000;
-		this.recentShardCount = 0;
-		this.shardBurstTimer = 0;
-		EventBus.emit('overdrive-start', { duration: 6000 });
-	}
-
-	private updateOverdrive(dt: number): void {
-		// killStreak 타이머
+	private updateKillStreak(dt: number): void {
 		if (this.killStreakTimer > 0) {
 			this.killStreakTimer -= dt * 1000;
 			if (this.killStreakTimer <= 0) {
 				this.killStreak = 0;
 			}
 		}
-		// shard burst 집계 창 (5초)
-		if (this.shardBurstTimer > 0) {
-			this.shardBurstTimer -= dt * 1000;
-		} else {
-			this.recentShardCount = 0;
-			this.shardBurstTimer = 5000;
-		}
-		// 오버드라이브 진행
-		if (this.overdriveTimer > 0) {
-			this.overdriveTimer -= dt * 1000;
-			// 오버드라이브 중 발사 속도 2배
-			this.player.upgrades.fireRateMs; // read only here
-			if (this.overdriveTimer <= 0) {
-				this.overdriveTimer = 0;
-				EventBus.emit('overdrive-end', {});
-			} else {
-				EventBus.emit('overdrive-tick', { remaining: this.overdriveTimer });
-			}
-		}
-	}
-
-	isOverdriving(): boolean {
-		return this.overdriveTimer > 0;
 	}
 
 	// ─── 보스 AOE 범위공격 ───────────────────────────────────────────────────────

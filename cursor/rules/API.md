@@ -30,9 +30,6 @@
 | `boss-incoming` | (없음) | 보스 스폰 알림 배너 |
 | `boss-cleared` | (없음) | 보스 격파·HP 회복 연출 |
 | `kill-streak` | `{ streak: number }` | 연속 처치 |
-| `overdrive-start` | `{ duration: number }` | 오버드라이브 시작(ms) |
-| `overdrive-tick` | `{ remaining: number }` | 남은 시간(ms) |
-| `overdrive-end` | (없음) | 오버드라이브 종료 |
 | `damage-number` | `{ pos: THREE.Vector3, amount: number, type: 'deal'\|'take'\|'heal' }` | 부유 데미지 숫자 |
 | `game-over` | 아래 표 참고 | 사망 시 최종 통계·점수 |
 

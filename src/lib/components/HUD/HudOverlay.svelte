@@ -183,8 +183,6 @@
 	let bossCleared = $state(false);
 	let gameOver    = $state(false);
 	let goDetail = $state<GameOverDetail | null>(null);
-	let overdrive        = $state(false);
-	let overdriveMs      = $state(0);
 	let killStreak       = $state(0);
 	let killStreakVisible = $state(false);
 	let killStreakTimer   = 0;
@@ -391,16 +389,6 @@
 	function onMinimapUpdate(...args: unknown[]): void {
 		drawMinimap(args[0] as MinimapData);
 	}
-	function onOverdriveStart(...args: unknown[]): void {
-		const d = args[0] as { duration: number };
-		overdrive = true; overdriveMs = d.duration;
-	}
-	function onOverdriveTick(...args: unknown[]): void {
-		overdriveMs = (args[0] as { remaining: number }).remaining;
-	}
-	function onOverdriveEnd(): void {
-		overdrive = false; overdriveMs = 0;
-	}
 	function onKillStreak(...args: unknown[]): void {
 		killStreak = (args[0] as { streak: number }).streak;
 		killStreakVisible = true;
@@ -450,9 +438,6 @@
 		EventBus.on('game-over',            onGameOver);
 		EventBus.on('minimap-update',       onMinimapUpdate);
 		EventBus.on('kill-stats-update',   onKillStatsUpdate);
-		EventBus.on('overdrive-start',      onOverdriveStart);
-		EventBus.on('overdrive-tick',       onOverdriveTick);
-		EventBus.on('overdrive-end',        onOverdriveEnd);
 		EventBus.on('kill-streak',          onKillStreak);
 		EventBus.on('upgrade-picked',       onUpgradePicked);
 		window.addEventListener('keydown', onKeydown);
@@ -470,9 +455,6 @@
 		EventBus.off('game-over',            onGameOver);
 		EventBus.off('minimap-update',       onMinimapUpdate);
 		EventBus.off('kill-stats-update',   onKillStatsUpdate);
-		EventBus.off('overdrive-start',      onOverdriveStart);
-		EventBus.off('overdrive-tick',       onOverdriveTick);
-		EventBus.off('overdrive-end',        onOverdriveEnd);
 		EventBus.off('kill-streak',          onKillStreak);
 		EventBus.off('upgrade-picked',       onUpgradePicked);
 		window.removeEventListener('keydown', onKeydown);
@@ -486,14 +468,6 @@
 	<!-- ── HP 위험 비넷 (HP 30% 이하) ─────────────────────────────────────── -->
 	{#if hpPct < 30}
 		<div class="danger-vignette" style="opacity:{(1 - hpPct / 30) * 0.75};"></div>
-	{/if}
-
-	<!-- ── 오버드라이브 글로우 ─────────────────────────────────────────────── -->
-	{#if overdrive}
-		<div class="overdrive-vignette"></div>
-		<div class="overdrive-banner">
-			⚡ OVERDRIVE ⚡  {Math.ceil(overdriveMs / 1000)}s
-		</div>
 	{/if}
 
 	<!-- ── 킬 스트릭 ────────────────────────────────────────────────────────── -->
@@ -1172,21 +1146,6 @@
 		animation: dangerPulse 0.7s ease-in-out infinite alternate;
 	}
 	@keyframes dangerPulse { to { opacity: 0.55; } }
-
-	/* ── 오버드라이브 ── */
-	.overdrive-vignette {
-		position: absolute; inset: 0; pointer-events: none;
-		background: radial-gradient(ellipse at center, transparent 45%, rgba(255,220,0,0.30) 100%);
-		animation: overPulse 0.4s ease-in-out infinite alternate;
-	}
-	@keyframes overPulse { to { opacity: 0.55; } }
-	.overdrive-banner {
-		position: absolute; top: 90px; left: 50%; transform: translateX(-50%);
-		font-size: 1.5rem; font-weight: 900; letter-spacing: 0.16em; color: #ffee00;
-		text-shadow: 0 0 16px #ffcc00, 0 0 32px #ff8800, 2px 2px 4px #000;
-		animation: titlePulse 0.5s ease-in-out infinite alternate;
-		pointer-events: none;
-	}
 
 	/* ── 킬 스트릭 ── */
 	.streak-banner {
