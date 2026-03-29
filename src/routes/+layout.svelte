@@ -3,7 +3,6 @@
 	import { get } from 'svelte/store';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import favicon from '$lib/assets/favicon.svg';
 	import LanguageSwitcher from '$lib/components/LanguageSwitcher.svelte';
 	import { locale } from '$lib/i18n/locale';
 	import {
@@ -62,10 +61,6 @@
 		};
 	});
 </script>
-
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
 
 {#if !page.url.pathname.startsWith('/game')}
 	<LanguageSwitcher />

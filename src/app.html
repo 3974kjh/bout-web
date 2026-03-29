@@ -1,8 +1,75 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>BOUT · 3D 메크 생존 브라우저 게임</title>
+		<meta
+			name="description"
+			content="BOUT: 브라우저에서 플레이하는 3D 메크 생존 액션. 자동 사격, 레벨업 카드 선택, 보스 웨이브, 미니맵. 15분 생존 목표. 정비소(기체·미사일 스킨·선호 카드)와 로컬 랭킹 지원. Korean & English UI."
+		/>
+		<meta
+			name="keywords"
+			content="BOUT, browser game, web game, 3D mech, survival game, roguelike, auto shooter, Three.js, SvelteKit, 메크 게임, 생존 게임, 브라우저 게임"
+		/>
+		<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+		<meta name="author" content="BOUT" />
+		<link rel="canonical" href="https://bout-web.pages.dev/" />
+		<link rel="icon" type="image/png" href="/images/logo/logo.png" />
+		<link rel="apple-touch-icon" href="/images/logo/logo.png" />
+
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="BOUT" />
+		<meta property="og:title" content="BOUT · 3D Mech Survival Browser Game" />
+		<meta
+			property="og:description"
+			content="Play in your browser: 3D mech survival with auto-fire, upgrade cards, boss waves, and minimap. Hangar customization and local rankings. UI in Korean and English."
+		/>
+		<meta property="og:url" content="https://bout-web.pages.dev/" />
+		<meta property="og:image" content="https://bout-web.pages.dev/images/logo/logo.png" />
+		<meta property="og:image:alt" content="BOUT game logo" />
+		<meta property="og:locale" content="ko_KR" />
+		<meta property="og:locale:alternate" content="en_US" />
+
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="BOUT · 3D Mech Survival Browser Game" />
+		<meta
+			name="twitter:description"
+			content="Browser-based 3D mech survival: auto-fire, card upgrades, bosses, minimap. Hangar & rankings. KO/EN."
+		/>
+		<meta name="twitter:image" content="https://bout-web.pages.dev/images/logo/logo.png" />
+
+		<!-- Google Search Console -->
+		<meta name="google-site-verification" content="g9zi_W6eLkvTA-JVk6orfqxHel0ml6OYtTgi5lfGURQ" />
+		<!-- Naver Search Console -->
+		<meta name="naver-site-verification" content="dae010d88d84720152ec68889614c48822e05d69" />
+		
+		<script type="application/ld+json">
+			{
+				"@context": "https://schema.org",
+				"@type": "WebApplication",
+				"name": "BOUT",
+				"alternateName": ["BOUT 메크 생존", "BOUT Mech Survival"],
+				"url": "https://bout-web.pages.dev/",
+				"description": "BOUT is a free, client-side 3D mech survival game that runs in modern web browsers. Players control a mech with WASD movement, auto-targeting projectiles, dash and jump. Core loop: survive on a large map while defeating waves of machines and bosses, earn experience to level up and choose one of three random upgrade cards, use a minimap for awareness, and aim for a 15-minute survival victory. Features a hangar to select chassis (procedural or GLTF-skinned mechs), missile color skins, and favored card tags; rankings are stored locally in IndexedDB. User interface supports Korean and English.",
+				"applicationCategory": "GameApplication",
+				"operatingSystem": "Web browser (Chrome, Firefox, Safari, Edge)",
+				"browserRequirements": "Requires HTML5, WebGL, and modern JavaScript",
+				"inLanguage": ["ko", "en"],
+				"isAccessibleForFree": true,
+				"offers": {
+					"@type": "Offer",
+					"price": "0",
+					"priceCurrency": "USD",
+					"availability": "https://schema.org/InStock"
+				},
+				"publisher": {
+					"@type": "Organization",
+					"name": "BOUT"
+				}
+			}
+		</script>
+
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

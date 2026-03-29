@@ -1,3 +1,32 @@
-# allow crawling everything by default
+# BOUT — https://bout-web.pages.dev/
+# 크롤링·색인 허용 (검색 엔진·LLM 봇이 공개 페이지를 수집할 수 있도록)
+
 User-agent: *
-Disallow:
+Allow: /
+
+# 주요 AI/LLM 크롤러 (콘텐츠 요약·검색 연동용 — 사이트 전체 허용)
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+# Yandex 등 일부 엔진용 (호스트만)
+Host: bout-web.pages.dev
+
+Sitemap: https://bout-web.pages.dev/sitemap.xml
