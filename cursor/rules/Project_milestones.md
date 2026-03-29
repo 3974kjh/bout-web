@@ -28,7 +28,7 @@
 - [x] 보스 격파 시 HP 회복·난이도 테마 반영 등 (`onBossDefeated`)
 
 ### 오디오·성능(코어)
-- [x] 효과음 `sfx.ts` — `Audio` 풀링 + 고빈도 이벤트 스로틀
+- [x] 효과음 `sfx.ts` — Web Audio `AudioBuffer` + 음성 상한·티어·스로틀, 게임 진입 `warmupSfx()`
 - [x] 상기 웨이브/경험치/투사체/분리/몬스터 시각 LOD 등 프레임 비용 완화 (`Architecture.md` 표 참고)
 
 ### HUD·UI

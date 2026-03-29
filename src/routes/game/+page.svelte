@@ -2,13 +2,14 @@
 	import { onMount, onDestroy } from 'svelte';
 	import HudOverlay from '$lib/components/HUD/HudOverlay.svelte';
 	import { EventBus } from '$lib/game/bridge/EventBus';
+	import { warmupSfx } from '$lib/audio/sfx';
 
 	let gameContainer: HTMLDivElement | undefined = $state();
 	let engine: { destroy: () => void } | null = $state(null);
 
 	onMount(async () => {
 		const { primeShopSettingsForGame } = await import('$lib/game/shopGameCache');
-		await primeShopSettingsForGame();
+		await Promise.all([primeShopSettingsForGame(), warmupSfx()]);
 		const { GameEngine } = await import('$lib/game/core/GameEngine');
 		engine = new GameEngine(gameContainer!);
 	});

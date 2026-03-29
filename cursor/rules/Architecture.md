@@ -14,7 +14,7 @@ src/
 │       └── +page.ts              # ssr = false
 ├── lib/
 │   ├── audio/
-│   │   └── sfx.ts                # 효과음 — Audio 풀링 + 경로별 스로틀
+│   │   └── sfx.ts                # 효과음 — Web Audio 버퍼 + 음성 상한·티어·스로틀
 │   ├── game/
 │   │   ├── core/
 │   │   │   ├── GameEngine.ts     # 메인 루프, 씬·시스템 조율, EventBus 허브
@@ -118,7 +118,7 @@ THREE.Scene
 
 | 영역 | 구현 요지 |
 |------|-----------|
-| SFX | `sfx.ts` — URL별 `Audio` 풀, `playerMissile`/`enemyDamage` 등 스로틀 |
+| SFX | `sfx.ts` — `AudioBuffer` 캐시·`AudioBufferSourceNode`, 동시 재생·URL별 상한·티어, 스로틀; `warmupSfx()` |
 | 경험치 조각 | `ExpShardManager` — 공유 지오/머티리얼 `InstancedMesh`, 풀 포화 시 `addExp`로 즉시 지급 |
 | 플레이어 투사체 | `GameEngine.rebuildMonsterProjBuckets` + 이웃 셀만 순회 |
 | 몬스터 밀집 | `separateMonsters` 3×3 셀 + 다수 시 격프레임 |
