@@ -20,6 +20,8 @@
 	let { mechBase }: Props = $props();
 
 	let host: HTMLDivElement | undefined = $state();
+	/** GLTF 스키닝은 네트워크·파싱 지연이 있어 로드 완료 전까지 오버레이 표시 */
+	let previewBusy = $state(mechBase === 'expressive' || mechBase === 'soldier');
 
 	/** 정비소 미리보기: 최종 진화 단계(form 8) — `formForLevel(20)`과 동일 */
 	const PREVIEW_FORM = 8;
@@ -146,6 +148,7 @@
 						'tpose'
 					]);
 					idle?.reset().play();
+					previewBusy = false;
 					tick();
 				})
 				.catch(() => {
@@ -157,6 +160,7 @@
 					rootGroup = group;
 					scene.add(group);
 					centerModelAtLookAt(group);
+					previewBusy = false;
 					tick();
 				});
 		} else {
@@ -183,7 +187,20 @@
 </script>
 
 <!-- mechBase 변경 시 전체 리마운트 — 부모에서 {#key mechBase} 권장 -->
-<div class="preview-host" bind:this={host}></div>
+<div class="preview-shell">
+	<div class="preview-host" bind:this={host}></div>
+	{#if previewBusy}
+		<div class="preview-loading" role="status" aria-live="polite" aria-busy="true">
+			<div class="progress-circle-wrap" aria-hidden="true">
+				<svg class="progress-circle" viewBox="0 0 44 44" width="44" height="44">
+					<circle class="progress-circle__track" cx="22" cy="22" r="18" />
+					<circle class="progress-circle__arc" cx="22" cy="22" r="18" />
+				</svg>
+			</div>
+			<span class="preview-loading__text">{tr($locale, 'shop.previewLoading')}</span>
+		</div>
+	{/if}
+</div>
 <p class="preview-caption">
 	{#if mechBase === 'expressive' || mechBase === 'soldier'}
 		{tr($locale, 'shop.previewCaptionSkinnedHtml', { form: String(PREVIEW_FORM) })}
@@ -193,6 +210,10 @@
 </p>
 
 <style>
+	.preview-shell {
+		position: relative;
+		width: 100%;
+	}
 	.preview-host {
 		width: 100%;
 		min-height: min(42vh, 320px);
@@ -204,6 +225,50 @@
 			inset 0 0 20px rgba(255, 255, 255, 0.65),
 			0 2px 10px rgba(0, 0, 0, 0.06);
 		background: linear-gradient(180deg, #d8d8dc 0%, #c4c4ca 100%);
+	}
+	.preview-loading {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.65rem;
+		border-radius: 10px;
+		background: linear-gradient(180deg, #d8d8dc 0%, #c4c4ca 100%);
+		box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.5);
+	}
+	.progress-circle-wrap {
+		animation: preview-spin 0.85s linear infinite;
+		color: rgba(28, 78, 128, 0.92);
+		filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.6));
+	}
+	.progress-circle {
+		display: block;
+	}
+	.progress-circle__track {
+		fill: none;
+		stroke: rgba(0, 0, 0, 0.07);
+		stroke-width: 3.2;
+	}
+	.progress-circle__arc {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 3.2;
+		stroke-linecap: round;
+		stroke-dasharray: 30 83;
+	}
+	@keyframes preview-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.preview-loading__text {
+		font-size: 0.68rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: rgba(45, 75, 108, 0.88);
 	}
 	.preview-host :global(canvas) {
 		display: block;

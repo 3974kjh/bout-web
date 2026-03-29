@@ -134,6 +134,7 @@
 		"evoLeadProcHtml": "Each chassis stacks Forms through a <strong>distinct 3D pipeline</strong> (box / triangle / round). The <strong>Form 0–8</strong> columns below match the label order.",
 		"evoMatrixAria": "Form per level 1–20",
 		"evoFootHtml": "Level 21+ matches level 20: <strong>Form 8</strong>.",
+		"previewLoading": "Loading model…",
 		"previewCaptionSkinnedHtml": "Form {form} · GLTF + attach modules · boosters · wings · animation preview",
 		"previewCaptionProcHtml": "Form {form} · chassis-specific mesh (box/triangle/circle) · evolves 0–8 by level"
 	},

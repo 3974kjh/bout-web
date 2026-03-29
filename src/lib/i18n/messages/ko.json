@@ -134,6 +134,7 @@
 		"evoLeadProcHtml": "기체마다 <strong>완전히 다른 3D 파이프라인</strong>(네모 / 세모 / 원형)으로 Form이 쌓입니다. 아래 <strong>Form 0~8</strong> 열과 라벨이 같은 순서입니다.",
 		"evoMatrixAria": "레벨 1부터 20까지 Form",
 		"evoFootHtml": "Lv 21 이상은 Lv 20과 같이 <strong>Form 8</strong>입니다.",
+		"previewLoading": "모델 불러오는 중…",
 		"previewCaptionSkinnedHtml": "Form {form} · GLTF + 부착 모듈·부스터·날개 · 애니메이션 미리보기",
 		"previewCaptionProcHtml": "Form {form} · 기체별 전용 메쉬(네모·세모·원) · 레벨에 따라 0~8 진화"
 	},

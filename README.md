@@ -11,7 +11,8 @@
 - 일정 주기로 **대형 보스**가 등장합니다. 보스는 종류별로 **광역 AOE** 등 고위협 패턴을 가집니다.
 - 발판 위에 떨어지는 **체력 포션**과 **카드 보급 캐시**를 먹으면 즉시 회복하거나 추가 카드 선택을 할 수 있습니다.
 - 상단 HUD에는 **생존 시간**, **미니맵**(플레이어·적·아이템), **보스/일반 처치 통계** 등이 표시됩니다.
-- **게임 오버** 시에는 보스 종류별 처치 수·일반 처치·달성 레벨·생존 시간을 바탕으로 한 **가중치 점수(정수)** 가 표시됩니다.
+- **게임 오버** 시에는 보스 종류별 처치 수·일반 처치·달성 레벨·생존 시간을 바탕으로 한 **가중치 점수(정수)** 가 표시되고, 기록은 브라우저 **IndexedDB**에 쌓여 **랭킹** 화면에서 볼 수 있습니다.
+- **정비소**에서 시작 기체(절차 메시 vs GLTF 스키닝), 미사일 색, 선호 카드 태그를 고르고 저장할 수 있습니다.
 
 ---
 
@@ -37,6 +38,7 @@
 | 3D | **Three.js** |
 | 언어 | **TypeScript** (strict) |
 | 빌드 | **Vite** 7 |
+| 클라이언트 저장소 | **IndexedDB** (정비소 설정 `bout-web`, 랭크 기록 별도 스토어) |
 
 게임 로직(Three.js)과 UI(Svelte)는 **`EventBus`** 로만 이벤트를 주고받도록 분리되어 있습니다. 이벤트 목록은 `cursor/rules/API.md` 를 참고하세요.
 
@@ -49,7 +51,7 @@ npm install
 npm run dev
 ```
 
-브라우저에서 개발 서버 주소로 접속한 뒤, 메인 화면의 **작전 개시** 로 `/game` 에 진입합니다.
+브라우저에서 개발 서버 주소로 접속한 뒤, 메인 화면의 **작전 개시** 로 `/game` 에 진입합니다. **정비소**·**랭킹**은 랜딩에서 각각 `/shop`, `/rank` 로 이동합니다.
 
 ### 기타 스크립트
 
@@ -68,29 +70,36 @@ npm run dev
 ```
 src/
 ├── routes/
-│   ├── +page.svelte       # 랜딩
-│   └── game/+page.svelte  # 게임 캔버스 + HUD
+│   ├── +page.svelte          # 랜딩 (작전 개시·정비소·랭킹·음량)
+│   ├── shop/+page.svelte     # 정비소 (IndexedDB)
+│   ├── rank/+page.svelte     # 랭킹 (로컬 기록)
+│   └── game/+page.svelte     # 게임 캔버스 + HUD
 ├── lib/
+│   ├── audio/sfx.ts          # 효과음 풀·스로틀
 │   ├── game/
-│   │   ├── core/GameEngine.ts    # 메인 루프
-│   │   ├── entities/             # Player, Monster, ExpShard, PlatformLoot …
-│   │   ├── systems/              # Wave, Level, Upgrade, Combat …
+│   │   ├── core/GameEngine.ts
+│   │   ├── entities/         # Player, Monster, ExpShardManager, Projectile, …
+│   │   ├── systems/          # Wave, Level, Upgrade, Combat, …
 │   │   ├── stages/TrainingPlanet.ts
-│   │   ├── constants/GameConfig.ts  # 물리·대쉬·점수식 등
+│   │   ├── constants/GameConfig.ts
+│   │   ├── ui/DamageNumbers.ts
 │   │   └── bridge/EventBus.ts
-│   ├── domain/types.ts
-│   └── components/HUD/HudOverlay.svelte
-└── cursor/rules/            # Cursor용 아키텍처·API·마일스톤 문서
+│   ├── storage/              # shopIndexedDb, rankIndexedDb
+│   ├── components/
+│   │   ├── HUD/HudOverlay.svelte
+│   │   └── shop/             # ShopMechPreview, ShopEvolutionGuide
+│   └── domain/types.ts
+└── cursor/rules/             # Cursor용 아키텍처·API·마일스톤 문서
 ```
 
-자세한 디렉터리 설명은 `cursor/rules/Architecture.md` 를 읽으면 됩니다.
+자세한 디렉터리·성능 요약은 `cursor/rules/Architecture.md` 를 읽으면 됩니다.
 
 ---
 
 ## 로드맵 (문서 기준)
 
-- **Phase 1**: 싱글 3D 서바이벌 코어 (현재 본 레포의 중심)
-- **Phase 2**: 메인 메뉴 확장, 종족·파츠 선택 UI, 스테이지 선택 등
+- **Phase 1**: 싱글 3D 서바이벌 코어 (본 레포의 중심, 지속 튜닝)
+- **Phase 2**: 메뉴·메타 — 정비소·랭킹·랜딩 음량 등 **일부 구현됨**; 종족/스테이지 심화 등은 예정 (`cursor/rules/Project_milestones.md`)
 - **Phase 3**: Supabase 기반 멀티플레이 (스키마는 `cursor/rules/API.md` 하단 예정 섹션 참고)
 
 ---
@@ -106,7 +115,7 @@ src/
 AI·기여자용 규칙은 `cursor/rules/` 를 우선합니다.
 
 - `cursorrules` — 작업 원칙·스택 경계
-- `Architecture.md` — 구조
+- `Architecture.md` — 구조·씬·성능 요약
 - `DomainModels.md` — 도메인 타입 설명
 - `API.md` — EventBus 계약
 - `Project_milestones.md` — 마일스톤

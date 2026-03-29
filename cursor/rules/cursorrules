@@ -7,13 +7,13 @@
 ## Docs (먼저 참고)
 | 파일 | 내용 |
 |------|------|
-| `Architecture.md` | 디렉터리, 레이어, 씬 구조, EventBus 개요 |
+| `Architecture.md` | 디렉터리, 레이어, 씬 구조, 성능 요약, EventBus 개요 |
 | `DomainModels.md` | `types.ts` 기준 도메인·몬스터 설정 |
 | `API.md` | EventBus 이벤트 계약 (페이로드) |
 | `Project_milestones.md` | 단계별 목표·완료 범위 |
 
 ## Stack rules
-- **SvelteKit**: 라우팅, 메인 메뉴, 게임 페이지 마운트, HUD
+- **SvelteKit**: 라우팅, 랜딩, **정비소 `/shop`**, **랭킹 `/rank`**, 게임 페이지 마운트, HUD
 - **Three.js**: 씬·렌더·엔티티 업데이트 — **Svelte 반응성/스토어를 게임 루프에 직접 연결하지 않음**
 - **경계**: 게임 ↔ UI는 `EventBus`로만 통신 (`emit` / `on` / `off`)
 - **TypeScript strict**: 불필요한 `any` 지양, 공개 API는 타입 명시
@@ -26,16 +26,26 @@
 
 ## 현재 게임 메카닉 (요약)
 - **이동**: WASD, **점프**: Space / C, **대쉬**: Shift (머리 위 스프라이트 HUD에 쿨 표시)
-- **사격**: 자동 미사일 (업그레이드로 강화)
-- **성장**: EXP 조각 수집 → 레벨업 → **카드 3선택 1** (`UpgradeSystem`)
+- **사격**: 자동 미사일 (업그레이드로 강화); 적 판정은 구형 히트 + XZ 셀 버킷
+- **성장**: `ExpShardManager`로 EXP 조각 → 레벨업 → **카드 3선택 1** (`UpgradeSystem`)
 - **맵**: `TrainingPlanet` — 지형·플랫폼·충돌·발판 루트
 - **발판 루트**: 체력 포션 / 카드 보급 캐시 (`PlatformLoot`)
-- **웨이브**: `WaveSystem` — 잡몹 상시 스폰, 주기적 **동물 테마 보스** (5종 로테이션 + AOE)
+- **웨이브**: `WaveSystem` — 잡몹 상시 스폰, 동시 상한·밀집 시 간격 완화, 주기적 **동물 테마 보스** (5종 로테이션 + AOE)
 - **진화**: 레벨에 따른 메카 폼(`MechModel.formForLevel`) — Lv10+ 2단 점프, form7+ 공중 길게 누르기 글라이드
 - **HUD**: 생존 시간, 미니맵, 킬 통계, 오버드라이브, 게임오버 시 점수·보스별 처치 상세
+- **효과음**: `lib/audio/sfx.ts` — 풀링·스로틀 (`effectiveSfxMultiplier`와 연동)
+
+## 정비소·메타 (Phase 2 일부)
+- **`/shop`**: `shopIndexedDb`에 기체·미사일·선호 카드 저장; `ShopMechPreview`·`ShopEvolutionGuide`에서 Three 미리보기(스키닝 GLTF는 로드 중 오버레이)
+- **`/rank`**: `rankIndexedDb` 기반 시상대·목록
+- **랜딩**: `AudioSettingsModal`로 BGM/SFX 설정
+
+## 성능 (코어 루프)
+- 경험치 **InstancedMesh**(`ExpShardManager`), 플레이어 투사체 **XZ 셀**, `DamageNumbers` 상한, `WaveSystem`·`Monster` 시각 LOD, `separateMonsters` 격프레임 등 — 상세는 `Architecture.md` 표
 
 ## 레거시·미연결 코드
 - `TransformSystem.ts`, `HealthItem.ts` 등은 저장소에 존재할 수 있으나 **현재 `GameEngine` 루프에는 미연결**일 수 있음. 문서/기능 설명은 **실제 엔진 경로**를 기준으로 할 것.
+- `ExpShard.ts`는 과거 메쉬-per-조각 구현; **런타임 드롭은 `ExpShardManager`**.
 
 ## 작업 방식
 - 한 번에 범위가 크면 단계 나누기; 불필요한 리팩터·무관 파일 수정 금지
@@ -48,5 +58,5 @@
 
 ## Phase guard
 - **Phase 1 (현재)**: 싱글 플레이 3D 서바이벌 코어 — 멀티·백엔드 혼입 금지
-- **Phase 2**: 메뉴 확장, 종족/파츠 선택 UI, 스테이지 선택 등
+- **Phase 2**: 메뉴·정비소·랭킹 등 일부 구현됨 — 종족/스테이지 심화는 예정
 - **Phase 3**: Supabase·실시간 동기화 (`API.md` 스키마 선행)

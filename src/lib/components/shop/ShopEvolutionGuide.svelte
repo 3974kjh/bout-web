@@ -36,6 +36,8 @@
 	});
 
 	let host: HTMLDivElement | undefined = $state();
+	/** 스키닝: GLTF 9회 로드 완료 전 캔버스 구간 로딩 표시 */
+	let evoStripBusy = $state(mechBase === 'expressive' || mechBase === 'soldier');
 
 	onMount(() => {
 		if (!host) return;
@@ -139,6 +141,7 @@
 						groups.push(g);
 						disposers.push(p.dispose);
 					}
+					evoStripBusy = false;
 					startLoop();
 				} catch {
 					if (!alive || !host) return;
@@ -150,6 +153,7 @@
 						scene.add(group);
 						groups.push(group);
 					}
+					evoStripBusy = false;
 					startLoop();
 				}
 			})();
@@ -191,7 +195,20 @@
 	</p>
 
 	<div class="evo-strip-wrap">
-		<div class="evo-canvas-host" bind:this={host}></div>
+		<div class="evo-canvas-shell">
+			<div class="evo-canvas-host" bind:this={host}></div>
+			{#if evoStripBusy}
+				<div class="evo-strip-loading" role="status" aria-live="polite" aria-busy="true">
+					<div class="evo-progress-circle-wrap" aria-hidden="true">
+						<svg class="evo-progress-circle" viewBox="0 0 44 44" width="40" height="40">
+							<circle class="evo-progress-circle__track" cx="22" cy="22" r="18" />
+							<circle class="evo-progress-circle__arc" cx="22" cy="22" r="18" />
+						</svg>
+					</div>
+					<span class="evo-strip-loading__text">{tr($locale, 'shop.previewLoading')}</span>
+				</div>
+			{/if}
+		</div>
 		<div class="evo-form-labels" aria-hidden="true">
 			{#each FORM_LEVEL_BRACKETS as b (b.form)}
 				<div class="efl-cell">
@@ -249,6 +266,61 @@
 		background: linear-gradient(180deg, #dcdce0 0%, #ceced4 55%, #c2c2c8 100%);
 		margin-bottom: 0.65rem;
 		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+	}
+
+	.evo-canvas-shell {
+		position: relative;
+		width: 100%;
+	}
+
+	.evo-strip-loading {
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		background: linear-gradient(180deg, #d8d8dc 0%, #c4c4ca 100%);
+		box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.5);
+	}
+
+	.evo-progress-circle-wrap {
+		animation: evo-preview-spin 0.85s linear infinite;
+		color: rgba(28, 78, 128, 0.92);
+		filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.6));
+	}
+
+	.evo-progress-circle {
+		display: block;
+	}
+
+	.evo-progress-circle__track {
+		fill: none;
+		stroke: rgba(0, 0, 0, 0.07);
+		stroke-width: 3.2;
+	}
+
+	.evo-progress-circle__arc {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 3.2;
+		stroke-linecap: round;
+		stroke-dasharray: 30 83;
+	}
+
+	@keyframes evo-preview-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.evo-strip-loading__text {
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: rgba(45, 75, 108, 0.88);
 	}
 
 	.evo-canvas-host {
