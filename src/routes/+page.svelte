@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
+	import { locale, translate as tr } from '$lib/i18n';
 
 	let audioSettingsOpen = $state(false);
 
@@ -38,25 +39,25 @@
 		<div class="hero-inner">
 			<div class="survival-strip" aria-hidden="true">
 				<span class="survival-strip__dot"></span>
-				<span class="survival-strip__text">THREAT LOCK · MECH SURVIVAL</span>
+				<span class="survival-strip__text">{tr($locale, 'home.strip')}</span>
 				<span class="survival-strip__pulse"></span>
 			</div>
-			<p class="eyebrow">3D MECH · SURVIVE · AUTO FIRE</p>
+			<p class="eyebrow">{tr($locale, 'home.eyebrow')}</p>
 			<h1 class="title">BOUT</h1>
-			<p class="tagline">넓은 행성에서 몰려오는 기계 군단을 뚫고 살아남으세요.</p>
-			<p class="tagline-sub">자동 화력으로 행성에서 15분동안 버티세요.</p>
+			<p class="tagline">{tr($locale, 'home.tagline')}</p>
+			<p class="tagline-sub">{tr($locale, 'home.taglineSub')}</p>
 
-			<ul class="pills" aria-label="게임 특징">
-				<li>자동 사격</li>
-				<li>레벨업 카드</li>
-				<li>보스 러시</li>
-				<li>미니맵</li>
+			<ul class="pills" aria-label={tr($locale, 'home.featuresAria')}>
+				<li>{tr($locale, 'home.featAutoFire')}</li>
+				<li>{tr($locale, 'home.featCards')}</li>
+				<li>{tr($locale, 'home.featBoss')}</li>
+				<li>{tr($locale, 'home.featMinimap')}</li>
 			</ul>
 
 			<div class="action-stack">
 				<button type="button" class="cta" onclick={() => goto('/game')}>
-					<span class="cta-label">작전 개시</span>
-					<span class="cta-sub">Enter the field</span>
+					<span class="cta-label">{tr($locale, 'home.ctaLabel')}</span>
+					<span class="cta-sub">{tr($locale, 'home.ctaSub')}</span>
 				</button>
 				<button type="button" class="btn-shop" onclick={() => goto('/shop')}>
 					<span class="btn-shop-row">
@@ -74,9 +75,9 @@
 								opacity="0.85"
 							/>
 						</svg>
-						<span class="btn-shop-label">정비소</span>
+						<span class="btn-shop-label">{tr($locale, 'home.shopLabel')}</span>
 					</span>
-					<span class="btn-shop-hint">기체 · 미사일 색 · 선호 카드</span>
+					<span class="btn-shop-hint">{tr($locale, 'home.shopHint')}</span>
 				</button>
 				<button type="button" class="btn-rank" onclick={() => goto('/rank')}>
 					<span class="btn-rank-row">
@@ -86,9 +87,9 @@
 								d="M5 3h2v2h10V3h2v4.2c0 1.68-1.02 3.12-2.47 3.73L17 19H7l-.53-8.07A4.2 4.2 0 0 1 5 7.2V3zm2.2 4.2c0 .55.45 1 1 1h7.6c.55 0 1-.45 1-1V5H7.2v2.2zM8.5 21h7v2h-7v-2z"
 							/>
 						</svg>
-						<span class="btn-rank-label">랭킹</span>
+						<span class="btn-rank-label">{tr($locale, 'home.rankLabel')}</span>
 					</span>
-					<span class="btn-rank-hint">기록 · 시상대 · 상세 목록</span>
+					<span class="btn-rank-hint">{tr($locale, 'home.rankHint')}</span>
 				</button>
 			</div>
 		</div>
@@ -104,17 +105,17 @@
 				<span class="fake-radar__blip"></span>
 				<span class="fake-radar__blip fake-radar__blip--2"></span>
 			</div>
-			<p class="hint-caption">HUD · 위협 감지 · 생존 타이머와 같은 톤</p>
+			<p class="hint-caption">{tr($locale, 'home.hintCaption')}</p>
 		</div>
 	</section>
 
-	<section class="controls" aria-label="조작 안내">
-		<h2 class="controls-title">조작</h2>
+	<section class="controls" aria-label={tr($locale, 'home.controlsAria')}>
+		<h2 class="controls-title">{tr($locale, 'home.controlsTitle')}</h2>
 		<dl class="control-grid">
-			<div><dt>이동</dt><dd>W A S D</dd></div>
-			<div><dt>점프</dt><dd>Space · C</dd></div>
-			<div><dt>대쉬</dt><dd>Shift</dd></div>
-			<div><dt>일시정지</dt><dd>Esc</dd></div>
+			<div><dt>{tr($locale, 'home.move')}</dt><dd>W A S D</dd></div>
+			<div><dt>{tr($locale, 'home.jump')}</dt><dd>Space · C</dd></div>
+			<div><dt>{tr($locale, 'home.dash')}</dt><dd>Shift</dd></div>
+			<div><dt>{tr($locale, 'home.pause')}</dt><dd>Esc</dd></div>
 		</dl>
 	</section>
 
@@ -157,7 +158,7 @@
 					<rect x="13.2" y="11" width="3.6" height="5" rx="1" fill="currentColor" />
 				</svg>
 			</span>
-			소리 설정
+			{tr($locale, 'home.audioOpen')}
 		</button>
 	</footer>
 

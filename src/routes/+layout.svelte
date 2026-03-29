@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
+	import { browser } from '$app/environment';
 	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
+	import LanguageSwitcher from '$lib/components/LanguageSwitcher.svelte';
+	import { locale } from '$lib/i18n/locale';
 	import {
 		bumpRouteBgmAfterNavigation,
 		registerRouteBgmPageHooks,
@@ -18,6 +22,14 @@
 	});
 
 	onMount(() => {
+		let unsubLocale: (() => void) | undefined;
+		if (browser) {
+			document.documentElement.lang = get(locale);
+			unsubLocale = locale.subscribe((l) => {
+				document.documentElement.lang = l;
+			});
+		}
+
 		const unregBgmHooks = registerRouteBgmPageHooks(() => page.url.pathname);
 		queueMicrotask(() => bumpRouteBgmAfterNavigation(() => page.url.pathname));
 
@@ -43,6 +55,7 @@
 		window.addEventListener('pointerdown', onPointerDown, true);
 		window.addEventListener('keydown', onUserInteractAudio, true);
 		return () => {
+			unsubLocale?.();
 			unregBgmHooks();
 			window.removeEventListener('pointerdown', onPointerDown, true);
 			window.removeEventListener('keydown', onUserInteractAudio, true);
@@ -54,6 +67,9 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+{#if !page.url.pathname.startsWith('/game')}
+	<LanguageSwitcher />
+{/if}
 {@render children()}
 
 <style>

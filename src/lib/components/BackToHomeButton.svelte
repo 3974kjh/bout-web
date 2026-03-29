@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { locale, translate as tr } from '$lib/i18n';
 </script>
 
 <button
 	type="button"
 	class="back-home"
 	onclick={() => goto('/')}
-	aria-label="메인으로"
-	title="메인"
+	aria-label={tr($locale, 'common.backHomeAria')}
+	title={tr($locale, 'common.backHomeTitle')}
 >
 	<svg class="back-home-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
 		<path

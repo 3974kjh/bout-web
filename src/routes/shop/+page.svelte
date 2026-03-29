@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import type { MechBase } from '$lib/domain/types';
 	import {
 		DEFAULT_SHOP_SETTINGS,
 		MAX_FAVORED_CARDS,
-		MECH_SHOP_INFO,
 		MISSILE_SKINS,
 		type ShopSettings
 	} from '$lib/game/shopSettings';
@@ -17,6 +17,7 @@
 		readShopSettingsFromIndexedDb,
 		writeShopSettingsToIndexedDb
 	} from '$lib/storage/shopIndexedDb';
+	import { locale, translate as tr, mechShopLine, missileSkinLabel } from '$lib/i18n';
 
 	const catalog = getAllCardsCatalog();
 	const mechOrder: MechBase[] = ['hypersuit', 'azonas-v', 'geren', 'expressive', 'soldier'];
@@ -30,7 +31,7 @@
 			try {
 				settings = await readShopSettingsFromIndexedDb();
 			} catch (e) {
-				loadError = e instanceof Error ? e.message : '로드 실패';
+				loadError = e instanceof Error ? e.message : tr(get(locale), 'shop.loadFailed');
 				settings = { ...DEFAULT_SHOP_SETTINGS };
 			} finally {
 				ready = true;
@@ -43,7 +44,7 @@
 		try {
 			await writeShopSettingsToIndexedDb(next);
 		} catch (e) {
-			loadError = e instanceof Error ? e.message : '저장 실패';
+			loadError = e instanceof Error ? e.message : tr(get(locale), 'shop.saveFailed');
 		}
 	}
 
@@ -73,30 +74,24 @@
 	<div class="bg-grid" aria-hidden="true"></div>
 
 	<header class="shop-head">
-		<div class="head-row">
-			<span class="storage-badge">IndexedDB</span>
-		</div>
-		<h1 class="title">정비소</h1>
+		<h1 class="title">{tr($locale, 'shop.title')}</h1>
 		<p class="sub">
-			브라우저 <strong>IndexedDB</strong>(DB <code>bout-web</code>)에 저장됩니다. 예전 <code>localStorage</code> 값은
-			최초 접속 시 자동 이전 후 삭제됩니다.
+			{@html tr($locale, 'shop.subHtml')}
 		</p>
 		{#if loadError}
 			<p class="err" role="alert">{loadError}</p>
 		{/if}
 		{#if !ready}
-			<p class="loading">설정 불러오는 중…</p>
+			<p class="loading">{tr($locale, 'shop.loading')}</p>
 		{/if}
 	</header>
 
 	<div class="shop-body bout-scrollbar">
 		<div class="col-main bout-scrollbar">
 			<section class="panel" aria-labelledby="sec-mech">
-				<h2 id="sec-mech" class="sec-title">캐릭터 (기체)</h2>
+				<h2 id="sec-mech" class="sec-title">{tr($locale, 'shop.secMech')}</h2>
 				<p class="sec-desc">
-					시작 스탯이 다릅니다. 하이퍼슈트·아조나스 V·게렌은 <strong>절차적 진화 메쉬</strong>가 서로 다르고,
-					<strong>익스프레시브</strong>·<strong>솔저</strong>는 GLTF 스키닝 + Form별 외장(게임과 동일). 솔저는 three.js
-					Soldier.glb(Mixamo)입니다.
+					{@html tr($locale, 'shop.secMechDesc')}
 				</p>
 				<div class="mech-grid">
 					{#each mechOrder as base (base)}
@@ -107,9 +102,9 @@
 							disabled={!ready}
 							onclick={() => selectMech(base)}
 						>
-							<span class="mech-name">{MECH_SHOP_INFO[base].name}</span>
-							<span class="mech-tag">{MECH_SHOP_INFO[base].tag}</span>
-							<span class="mech-blurb">{MECH_SHOP_INFO[base].blurb}</span>
+							<span class="mech-name">{mechShopLine($locale, base, 'name')}</span>
+							<span class="mech-tag">{mechShopLine($locale, base, 'tag')}</span>
+							<span class="mech-blurb">{mechShopLine($locale, base, 'blurb')}</span>
 						</button>
 					{/each}
 				</div>
@@ -120,8 +115,10 @@
 			</section>
 
 			<section class="panel" aria-labelledby="sec-skin">
-				<h2 id="sec-skin" class="sec-title">공격 스킨 (미사일 색)</h2>
-				<p class="sec-desc">플레이어 미사일 <code>Projectile</code> 재질 색상만 변경됩니다.</p>
+				<h2 id="sec-skin" class="sec-title">{tr($locale, 'shop.secSkin')}</h2>
+				<p class="sec-desc">
+					{@html tr($locale, 'shop.secSkinDesc')}
+				</p>
 				<div class="skin-grid">
 					{#each MISSILE_SKINS as skin (skin.id)}
 						<button
@@ -130,21 +127,26 @@
 							class:selected={settings.missileSkinId === skin.id}
 							disabled={!ready}
 							onclick={() => selectSkin(skin.id)}
-							title={skin.label}
+							title={missileSkinLabel($locale, skin.id)}
 						>
 							<span class="swatch" style:--c={'#' + skin.color.toString(16).padStart(6, '0')}></span>
-							<span class="skin-label">{skin.label}</span>
+							<span class="skin-label">{missileSkinLabel($locale, skin.id)}</span>
 						</button>
 					{/each}
 				</div>
 			</section>
 
 			<section class="panel" aria-labelledby="sec-cards">
-				<h2 id="sec-cards" class="sec-title">카드 커스텀 (선호 태그)</h2>
+				<h2 id="sec-cards" class="sec-title">{tr($locale, 'shop.secCards')}</h2>
 				<p class="sec-desc">
-					최대 <strong>{MAX_FAVORED_CARDS}</strong>장. <code>getRandomCards</code> 풀에서 가중치가 올라갑니다.
+					{@html tr($locale, 'shop.secCardsDesc', { max: MAX_FAVORED_CARDS })}
 				</p>
-				<p class="favor-count">선택 {settings.favoredCardIds.length} / {MAX_FAVORED_CARDS}</p>
+				<p class="favor-count">
+					{tr($locale, 'shop.favorCount', {
+						cur: settings.favoredCardIds.length,
+						max: MAX_FAVORED_CARDS
+					})}
+				</p>
 				<div class="card-pool bout-scrollbar">
 					{#each catalog as card (card.id)}
 						<button
@@ -164,20 +166,20 @@
 			</section>
 		</div>
 
-		<aside class="col-side" aria-label="선택 기체 미리보기">
+		<aside class="col-side" aria-label={tr($locale, 'shop.previewAsideAria')}>
 			<div class="side-sticky bout-scrollbar">
-				<h2 class="side-title">선택 기체</h2>
+				<h2 class="side-title">{tr($locale, 'shop.sideTitle')}</h2>
 				<div class="side-mech-head">
-					<span class="sm-name">{MECH_SHOP_INFO[settings.mechBase].name}</span>
-					<span class="sm-tag">{MECH_SHOP_INFO[settings.mechBase].tag}</span>
+					<span class="sm-name">{mechShopLine($locale, settings.mechBase, 'name')}</span>
+					<span class="sm-tag">{mechShopLine($locale, settings.mechBase, 'tag')}</span>
 				</div>
-				<p class="side-one">{MECH_SHOP_INFO[settings.mechBase].blurb}</p>
+				<p class="side-one">{mechShopLine($locale, settings.mechBase, 'blurb')}</p>
 
 				{#key settings.mechBase}
 					<ShopMechPreview mechBase={settings.mechBase} />
 				{/key}
 
-				<p class="side-evo-short">왼쪽 패널에서 레벨·Form 대응표와 9단계 실루엣을 확인할 수 있습니다.</p>
+				<p class="side-evo-short">{tr($locale, 'shop.sideEvoShort')}</p>
 			</div>
 		</aside>
 	</div>
@@ -188,8 +190,8 @@
 			class="btn-foot btn-foot-reset"
 			disabled={!ready}
 			onclick={resetDefaults}
-			aria-label="기본 설정으로 초기화"
-			title="기본 설정으로 초기화"
+			aria-label={tr($locale, 'shop.resetAria')}
+			title={tr($locale, 'shop.resetTitle')}
 		>
 			<span class="btn-foot-edge" aria-hidden="true"></span>
 			<svg class="btn-foot-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -203,8 +205,8 @@
 				/>
 			</svg>
 			<span class="btn-foot-text">
-				<span class="btn-foot-label">초기화</span>
-				<span class="btn-foot-sub">기본값 복원</span>
+				<span class="btn-foot-label">{tr($locale, 'shop.resetLabel')}</span>
+				<span class="btn-foot-sub">{tr($locale, 'shop.resetSub')}</span>
 			</span>
 		</button>
 		<button
@@ -212,16 +214,16 @@
 			class="btn-foot btn-foot-deploy"
 			disabled={!ready}
 			onclick={() => goto('/game')}
-			aria-label="작전 개시 — 전장으로 이동"
-			title="작전 개시"
+			aria-label={tr($locale, 'shop.deployAria')}
+			title={tr($locale, 'shop.deployTitle')}
 		>
 			<span class="btn-foot-edge" aria-hidden="true"></span>
 			<svg class="btn-foot-icon btn-foot-icon-lg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
 				<path fill="currentColor" d="M8.5 5.25v13.5L20.25 12 8.5 5.25z" />
 			</svg>
 			<span class="btn-foot-text">
-				<span class="btn-foot-label">작전 개시</span>
-				<span class="btn-foot-sub">전장 투입</span>
+				<span class="btn-foot-label">{tr($locale, 'shop.deployLabel')}</span>
+				<span class="btn-foot-sub">{tr($locale, 'shop.deploySub')}</span>
 			</span>
 			<span class="btn-foot-pulse" aria-hidden="true"></span>
 		</button>
@@ -298,7 +300,7 @@
 		color: rgba(170, 195, 215, 0.82);
 		max-width: 56rem;
 	}
-	.sub code {
+	.sub :global(code) {
 		font-size: 0.72em;
 		color: #9cf;
 	}
@@ -433,7 +435,7 @@
 		line-height: 1.5;
 		color: rgba(170, 190, 210, 0.82);
 	}
-	.sec-desc code {
+	.sec-desc :global(code) {
 		font-size: 0.68rem;
 		color: #9cf;
 	}

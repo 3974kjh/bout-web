@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte';
 	import BackToHomeButton from '$lib/components/BackToHomeButton.svelte';
 	import RankPodium from '$lib/components/rank/RankPodium.svelte';
-	import { MECH_SHOP_INFO } from '$lib/game/shopSettings';
 	import { readRankRecords, type RankRunRecord } from '$lib/storage/rankIndexedDb';
+	import { locale, translate as tr, numberLocaleTag, mechShopLine } from '$lib/i18n';
 	import type { MechBase } from '$lib/domain/types';
 
 	const PAGE_SIZE = 20;
@@ -37,6 +37,8 @@
 		if (page > totalPages) page = totalPages;
 	});
 
+	const dateLoc = $derived(numberLocaleTag($locale));
+
 	onMount(() => {
 		const html = document.documentElement;
 		const body = document.body;
@@ -62,7 +64,7 @@
 
 	function fmtDate(ts: number): string {
 		try {
-			return new Date(ts).toLocaleString('ko-KR', {
+			return new Date(ts).toLocaleString(dateLoc, {
 				month: '2-digit',
 				day: '2-digit',
 				hour: '2-digit',
@@ -82,18 +84,18 @@
 	<BackToHomeButton />
 	{#if loading}
 		<div class="rank-body rank-body--loading">
-			<p class="loading">불러오는 중…</p>
+			<p class="loading">{tr($locale, 'rank.loading')}</p>
 		</div>
 	{:else}
 		<div class="rank-body">
 			<header class="rank-head">
-				<h1>기록 랭킹</h1>
-				<p class="sub">게임 오버 시 기록이 저장됩니다. 최대 2000건까지 보관됩니다.</p>
+				<h1>{tr($locale, 'rank.title')}</h1>
+				<p class="sub">{tr($locale, 'rank.sub')}</p>
 			</header>
 
-		<section class="podium-section" aria-label="시상대">
+		<section class="podium-section" aria-label={tr($locale, 'rank.podiumAria')}>
 			{#if sorted.length === 0}
-				<p class="empty-podium">아직 기록이 없습니다. 작전을 한 번 끝내면 여기에 표시됩니다.</p>
+				<p class="empty-podium">{tr($locale, 'rank.emptyPodium')}</p>
 			{:else}
 				{#key podiumKey}
 					<RankPodium podiumRecords={podiumSlots} />
@@ -101,25 +103,25 @@
 			{/if}
 		</section>
 
-		<section class="list-section" aria-label="상세 기록">
-			<h2 class="list-title">상세 기록</h2>
+		<section class="list-section" aria-label={tr($locale, 'rank.listAria')}>
+			<h2 class="list-title">{tr($locale, 'rank.listTitle')}</h2>
 			{#if sorted.length === 0}
-				<p class="empty-list">목록이 비어 있습니다.</p>
+				<p class="empty-list">{tr($locale, 'rank.emptyList')}</p>
 			{:else}
 				<div class="table-wrap bout-scrollbar">
 					<table class="rank-table">
 						<thead>
 							<tr>
-								<th class="col-rank">순위</th>
-								<th class="col-icon">기체</th>
-								<th class="col-name">명칭</th>
-								<th class="col-num">총점</th>
-								<th class="col-num">레벨</th>
-								<th class="col-time">생존</th>
-								<th class="col-num">보스점수</th>
-								<th class="col-num">레벨점수</th>
-								<th class="col-num">시간점수</th>
-								<th class="col-date">일시</th>
+								<th class="col-rank">{tr($locale, 'rank.thRank')}</th>
+								<th class="col-icon">{tr($locale, 'rank.thMech')}</th>
+								<th class="col-name">{tr($locale, 'rank.thName')}</th>
+								<th class="col-num">{tr($locale, 'rank.thTotal')}</th>
+								<th class="col-num">{tr($locale, 'rank.thLevel')}</th>
+								<th class="col-time">{tr($locale, 'rank.thSurvival')}</th>
+								<th class="col-num">{tr($locale, 'rank.thBossScore')}</th>
+								<th class="col-num">{tr($locale, 'rank.thLevelScore')}</th>
+								<th class="col-num">{tr($locale, 'rank.thTimeScore')}</th>
+								<th class="col-date">{tr($locale, 'rank.thDate')}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -128,17 +130,17 @@
 								<tr>
 									<td class="col-rank"><strong>{rank}</strong></td>
 									<td class="col-icon">
-										<span class="mech-ico" title={MECH_SHOP_INFO[row.mechBase].name}
+										<span class="mech-ico" title={mechShopLine($locale, row.mechBase, 'name')}
 											>{MECH_ICON[row.mechBase]}</span
 										>
 									</td>
-									<td class="col-name">{MECH_SHOP_INFO[row.mechBase].name}</td>
-									<td class="col-num mono">{row.scoreTotal.toLocaleString('ko-KR')}</td>
+									<td class="col-name">{mechShopLine($locale, row.mechBase, 'name')}</td>
+									<td class="col-num mono">{row.scoreTotal.toLocaleString(dateLoc)}</td>
 									<td class="col-num">{row.level}</td>
 									<td class="col-time mono">{fmtTime(row.survivalTime)}</td>
-									<td class="col-num mono">{row.scoreBoss.toLocaleString('ko-KR')}</td>
-									<td class="col-num mono">{row.scoreLevel.toLocaleString('ko-KR')}</td>
-									<td class="col-num mono">{row.scoreTime.toLocaleString('ko-KR')}</td>
+									<td class="col-num mono">{row.scoreBoss.toLocaleString(dateLoc)}</td>
+									<td class="col-num mono">{row.scoreLevel.toLocaleString(dateLoc)}</td>
+									<td class="col-num mono">{row.scoreTime.toLocaleString(dateLoc)}</td>
 									<td class="col-date">{fmtDate(row.playedAt)}</td>
 								</tr>
 							{/each}
@@ -146,20 +148,20 @@
 					</table>
 				</div>
 
-				<nav class="pager" aria-label="페이지">
+				<nav class="pager" aria-label={tr($locale, 'rank.pagerAria')}>
 					<button
 						type="button"
 						class="pg-btn"
 						disabled={page <= 1}
 						onclick={() => { page = Math.max(1, page - 1); }}
-					>이전</button>
+					>{tr($locale, 'rank.prev')}</button>
 					<span class="pg-info">{page} / {totalPages}</span>
 					<button
 						type="button"
 						class="pg-btn"
 						disabled={page >= totalPages}
 						onclick={() => { page = Math.min(totalPages, page + 1); }}
-					>다음</button>
+					>{tr($locale, 'rank.next')}</button>
 				</nav>
 			{/if}
 		</section>

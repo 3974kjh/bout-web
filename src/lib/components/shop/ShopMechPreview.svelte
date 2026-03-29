@@ -14,6 +14,7 @@
 	} from '$lib/game/entities/playerSkinned';
 	import { updateSkinnedPlayerEvolution } from '$lib/game/entities/playerSkinnedEvolution';
 	import type { MechBase } from '$lib/domain/types';
+	import { locale, translate as tr } from '$lib/i18n';
 
 	type Props = { mechBase: MechBase };
 	let { mechBase }: Props = $props();
@@ -185,9 +186,9 @@
 <div class="preview-host" bind:this={host}></div>
 <p class="preview-caption">
 	{#if mechBase === 'expressive' || mechBase === 'soldier'}
-		Form {PREVIEW_FORM} · GLTF + 부착 모듈·부스터·날개 · 애니메이션 미리보기
+		{tr($locale, 'shop.previewCaptionSkinnedHtml', { form: String(PREVIEW_FORM) })}
 	{:else}
-		Form {PREVIEW_FORM} · 기체별 전용 메쉬(네모·세모·원) · 레벨에 따라 0~8 진화
+		{tr($locale, 'shop.previewCaptionProcHtml', { form: String(PREVIEW_FORM) })}
 	{/if}
 </p>
 

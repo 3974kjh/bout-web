@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { audioSettings } from '$lib/stores/audioSettings';
 	import { playUiModalOpen } from '$lib/audio/sfx';
+	import { locale, translate as tr } from '$lib/i18n';
 
 	/** `game`: 일시정지 위에 표시 */
 	let {
@@ -81,10 +82,10 @@
 
 			<div class="asm-head">
 				<div class="asm-head__text">
-					<h2 id="asm-title" class="asm-title">소리 설정</h2>
-					<p id="asm-desc" class="asm-sub">배경음 · 효과음 볼륨과 음소거를 조절합니다. 설정은 이 기기에 저장됩니다.</p>
+					<h2 id="asm-title" class="asm-title">{tr($locale, 'audio.title')}</h2>
+					<p id="asm-desc" class="asm-sub">{tr($locale, 'audio.desc')}</p>
 				</div>
-				<button type="button" class="asm-close" onclick={close} aria-label="닫기">
+				<button type="button" class="asm-close" onclick={close} aria-label={tr($locale, 'common.close')}>
 					<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 						<path
 							fill="none"
@@ -110,15 +111,17 @@
 							</svg>
 						</div>
 						<div class="asm-block__meta">
-							<span class="asm-block__name">배경음</span>
-							<span class="asm-block__hint">메뉴 · 정비소 · 전투 BGM</span>
+							<span class="asm-block__name">{tr($locale, 'audio.bgm')}</span>
+							<span class="asm-block__hint">{tr($locale, 'audio.bgmHint')}</span>
 						</div>
 						<button
 							type="button"
 							class="asm-switch"
 							class:asm-switch--muted={$audioSettings.bgmMuted}
 							onclick={toggleBgmMute}
-							aria-label={$audioSettings.bgmMuted ? '배경음 켜기' : '배경음 끄기'}
+							aria-label={$audioSettings.bgmMuted
+								? tr($locale, 'audio.bgmMuteOn')
+								: tr($locale, 'audio.bgmMuteOff')}
 							aria-pressed={$audioSettings.bgmMuted}
 						>
 							<span class="asm-switch__track">
@@ -142,7 +145,7 @@
 							max="1"
 							step="0.01"
 							value={$audioSettings.bgmVolume}
-							aria-label="배경음 크기"
+							aria-label={tr($locale, 'audio.bgmVolume')}
 							disabled={$audioSettings.bgmMuted}
 							oninput={(e) => {
 								const v = parseFloat((e.currentTarget as HTMLInputElement).value);
@@ -164,15 +167,17 @@
 							</svg>
 						</div>
 						<div class="asm-block__meta">
-							<span class="asm-block__name">효과음</span>
-							<span class="asm-block__hint">발사 · 피격 · UI 등</span>
+							<span class="asm-block__name">{tr($locale, 'audio.sfx')}</span>
+							<span class="asm-block__hint">{tr($locale, 'audio.sfxHint')}</span>
 						</div>
 						<button
 							type="button"
 							class="asm-switch"
 							class:asm-switch--muted={$audioSettings.sfxMuted}
 							onclick={toggleSfxMute}
-							aria-label={$audioSettings.sfxMuted ? '효과음 켜기' : '효과음 끄기'}
+							aria-label={$audioSettings.sfxMuted
+								? tr($locale, 'audio.sfxMuteOn')
+								: tr($locale, 'audio.sfxMuteOff')}
 							aria-pressed={$audioSettings.sfxMuted}
 						>
 							<span class="asm-switch__track">
@@ -196,7 +201,7 @@
 							max="1"
 							step="0.01"
 							value={$audioSettings.sfxVolume}
-							aria-label="효과음 크기"
+							aria-label={tr($locale, 'audio.sfxVolume')}
 							disabled={$audioSettings.sfxMuted}
 							oninput={(e) => {
 								const v = parseFloat((e.currentTarget as HTMLInputElement).value);
@@ -209,7 +214,7 @@
 			</div>
 
 			<div class="asm-foot">
-				<button type="button" class="asm-done" onclick={close}>확인</button>
+				<button type="button" class="asm-done" onclick={close}>{tr($locale, 'common.confirm')}</button>
 			</div>
 		</div>
 	</div>

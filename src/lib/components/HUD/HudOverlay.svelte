@@ -13,6 +13,7 @@
 	import { appendRankRunRecord } from '$lib/storage/rankIndexedDb';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
 	import HudEvoMiniPreview from '$lib/components/HUD/HudEvoMiniPreview.svelte';
+	import { locale, translate as tr, numberLocaleTag } from '$lib/i18n';
 	import type { MechBase } from '$lib/domain/types';
 
 	const MECH_BASES: MechBase[] = [
@@ -191,8 +192,24 @@
 	let showCards = $state(false);
 	let cards: UpgradeCardInfo[] = $state([]);
 	let levelUpNum = $state(1);
-	let cardModalTitle = $state('🌟 LEVEL UP');
-	let cardPickHint = $state('카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요');
+	type CardModalKind = 'idle' | 'levelup' | 'supply';
+	let cardModalKind = $state<CardModalKind>('idle');
+	let levelUpNumForModal = $state(1);
+	const numLoc = $derived(numberLocaleTag($locale));
+	const cardModalTitle = $derived(
+		cardModalKind === 'levelup'
+			? tr($locale, 'hud.levelUpTitle', { level: String(levelUpNumForModal) })
+			: cardModalKind === 'supply'
+				? tr($locale, 'hud.supplyTitle')
+				: ''
+	);
+	const cardPickHint = $derived(
+		cardModalKind === 'levelup'
+			? tr($locale, 'hud.cardPickHint')
+			: cardModalKind === 'supply'
+				? tr($locale, 'hud.supplyHint')
+				: ''
+	);
 	/** 카드 모달이 열릴 때마다 증가 — 등장 Y축 회전 애니 재생 */
 	let cardAnimEpoch = $state(0);
 
@@ -308,16 +325,15 @@
 		const d = args[0] as { level: number; cards: UpgradeCardInfo[] };
 		levelUpNum = d.level;
 		cards = d.cards;
-		cardModalTitle = `🌟 LEVEL UP — Lv.${d.level}`;
-		cardPickHint = '카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요';
+		levelUpNumForModal = d.level;
+		cardModalKind = 'levelup';
 		cardAnimEpoch++;
 		showCards = true;
 	}
 	function onFieldCardOffer(...args: unknown[]): void {
 		const d = args[0] as { cards: UpgradeCardInfo[] };
 		cards = d.cards;
-		cardModalTitle = '📦 보급 캐시';
-		cardPickHint = '고지대 보급 — 1 · 2 · 3 키로 카드 1장을 선택하세요';
+		cardModalKind = 'supply';
 		cardAnimEpoch++;
 		showCards = true;
 	}
@@ -407,8 +423,7 @@
 		killNormal = 0;
 		killBosses = { bear: 0, wolf: 0, dragon: 0, tiger: 0, ironlord: 0 };
 		pickedById = {};
-		cardModalTitle = '🌟 LEVEL UP';
-		cardPickHint = '카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요';
+		cardModalKind = 'idle';
 		EventBus.emit('game-pause-set', { paused: false });
 		EventBus.emit('restart-game');
 	}
@@ -476,7 +491,7 @@
 
 	<!-- ── 킬 스트릭 ────────────────────────────────────────────────────────── -->
 	{#if killStreakVisible}
-		<div class="streak-banner">{killStreak} KILL STREAK!</div>
+		<div class="streak-banner">{killStreak} {tr($locale, 'hud.streak')}</div>
 	{/if}
 
 	<!-- ── 상단 HUD ─────────────────────────────────────────────────────────── -->
@@ -501,9 +516,12 @@
 					</div>
 				</div>
 				{#if pickedRows.length > 0}
-					<div class="picked-cards-grid" aria-label="획득 업그레이드">
+					<div class="picked-cards-grid" aria-label={tr($locale, 'hud.pickedUpgradesAria')}>
 						{#each pickedRows as row (row.id)}
-							<span class="card-chip" title="{row.name} · 등급합 Lv.{row.points}">
+							<span
+								class="card-chip"
+								title={tr($locale, 'hud.chipTitle', { name: row.name, points: row.points })}
+							>
 								<span class="chip-emoji">{row.emoji}</span>
 								<span class="chip-lv">Lv.{row.points}</span>
 							</span>
@@ -516,27 +534,39 @@
 		<!-- 가운데: 남은 목표 시간 + 경과 생존 -->
 		<div class="center-panel">
 			<div class="time-display">{countdownDisplay}</div>
-			<div class="time-label">남은 시간</div>
-			<div class="time-elapsed-row" aria-label="경과 생존 시간">
-				<span class="time-elapsed-label">경과</span>
+			<div class="time-label">{tr($locale, 'hud.timeRemaining')}</div>
+			<div class="time-elapsed-row" aria-label={tr($locale, 'hud.elapsedAria')}>
+				<span class="time-elapsed-label">{tr($locale, 'hud.elapsed')}</span>
 				<span class="time-elapsed-value">{elapsedDisplay}</span>
 			</div>
-			<div class="kill-stats" aria-label="처치 통계">
+			<div class="kill-stats" aria-label={tr($locale, 'hud.killStatsAria')}>
 				<div class="kill-stats-boss">
-					<span class="ks-head">보스</span>
+					<span class="ks-head">{tr($locale, 'hud.boss')}</span>
 					<span class="ks-segs">
-						<span title="강철 곰">곰 {killBosses.bear}</span>
+						<span title={tr($locale, 'hud.bossBearTitle')}
+							>{tr($locale, 'hud.bossBear')} {killBosses.bear}</span
+						>
 						<span class="ks-dot">·</span>
-						<span title="기계 늑대">늑대 {killBosses.wolf}</span>
+						<span title={tr($locale, 'hud.bossWolfTitle')}
+							>{tr($locale, 'hud.bossWolf')} {killBosses.wolf}</span
+						>
 						<span class="ks-dot">·</span>
-						<span title="철갑 드래곤">용 {killBosses.dragon}</span>
+						<span title={tr($locale, 'hud.bossDragonTitle')}
+							>{tr($locale, 'hud.bossDragon')} {killBosses.dragon}</span
+						>
 						<span class="ks-dot">·</span>
-						<span title="사이버 호랑이">호랑이 {killBosses.tiger}</span>
+						<span title={tr($locale, 'hud.bossTigerTitle')}
+							>{tr($locale, 'hud.bossTiger')} {killBosses.tiger}</span
+						>
 						<span class="ks-dot">·</span>
-						<span title="아이언 로드">로드 {killBosses.ironlord}</span>
+						<span title={tr($locale, 'hud.bossIronlordTitle')}
+							>{tr($locale, 'hud.bossIronlord')} {killBosses.ironlord}</span
+						>
 					</span>
 				</div>
-				<div class="kill-stats-norm">일반 몬스터 <strong>{killNormal}</strong></div>
+				<div class="kill-stats-norm">
+					{tr($locale, 'hud.normalMonsters')} <strong>{killNormal}</strong>
+				</div>
 			</div>
 		</div>
 
@@ -562,10 +592,10 @@
 
 	<!-- ── BOSS 알림 ────────────────────────────────────────────────────────── -->
 	{#if bossAlert}
-		<div class="boss-banner"><span class="boss-text">⚠ BOSS INCOMING ⚠</span></div>
+		<div class="boss-banner"><span class="boss-text">{tr($locale, 'hud.bossIncoming')}</span></div>
 	{/if}
 	{#if bossCleared}
-		<div class="cleared-banner"><span class="cleared-text">BOSS DEFEATED — HP RESTORED!</span></div>
+		<div class="cleared-banner"><span class="cleared-text">{tr($locale, 'hud.bossDefeated')}</span></div>
 	{/if}
 
 	<!-- ── 일시정지 (ESC) ───────────────────────────────────────────────────── -->
@@ -578,8 +608,8 @@
 			aria-labelledby="pause-title"
 		>
 			<div class="pause-modal">
-				<h2 id="pause-title">일시정지</h2>
-				<p class="pause-hint">ESC 키로 닫기</p>
+				<h2 id="pause-title">{tr($locale, 'hud.pauseTitle')}</h2>
+				<p class="pause-hint">{tr($locale, 'hud.pauseHintEsc')}</p>
 				<button
 					type="button"
 					class="pause-open-audio"
@@ -622,12 +652,16 @@
 							<rect x="13.2" y="11" width="3.6" height="5" rx="1" fill="currentColor" />
 						</svg>
 					</span>
-					소리 설정
+					{tr($locale, 'hud.audioSettings')}
 					<span class="pause-open-audio__chev" aria-hidden="true">›</span>
 				</button>
 				<div class="pause-actions">
-					<button type="button" class="pause-btn primary" onclick={resumeGame}>계속하기</button>
-					<button type="button" class="pause-btn" onclick={goMenu}>메뉴로 돌아가기</button>
+					<button type="button" class="pause-btn primary" onclick={resumeGame}
+						>{tr($locale, 'hud.resume')}</button
+					>
+					<button type="button" class="pause-btn" onclick={goMenu}
+						>{tr($locale, 'hud.backToMenu')}</button
+					>
 				</div>
 			</div>
 		</div>
@@ -668,45 +702,66 @@
 	{#if gameOver && goDetail}
 		<div class="overlay">
 			<div class="box over go-box" class:go-victory={goDetail.victory}>
-				<h2>{goDetail.victory ? '미션 클리어' : 'GAME OVER'}</h2>
+				<h2>{goDetail.victory ? tr($locale, 'hud.missionClear') : tr($locale, 'hud.gameOver')}</h2>
 				<p class="go-score-line">
-					총 점수 <strong class="go-score-total">{goDetail.scoreTotal.toLocaleString('ko-KR')}</strong>
+					{tr($locale, 'hud.totalScore')}
+					<strong class="go-score-total">{goDetail.scoreTotal.toLocaleString(numLoc)}</strong>
 				</p>
-				<div class="go-score-grid" aria-label="점수 상세">
-					<span class="go-key">보스 기여</span><strong class="go-part">{goDetail.scoreBoss.toLocaleString('ko-KR')}</strong>
-					<span class="go-key">레벨 기여</span><strong class="go-part">{goDetail.scoreLevel.toLocaleString('ko-KR')}</strong>
-					<span class="go-key">생존 기여</span><strong class="go-part">{goDetail.scoreTime.toLocaleString('ko-KR')}</strong>
+				<div class="go-score-grid" aria-label={tr($locale, 'hud.scoreDetailAria')}>
+					<span class="go-key">{tr($locale, 'hud.scoreBoss')}</span><strong class="go-part"
+						>{goDetail.scoreBoss.toLocaleString(numLoc)}</strong
+					>
+					<span class="go-key">{tr($locale, 'hud.scoreLevel')}</span><strong class="go-part"
+						>{goDetail.scoreLevel.toLocaleString(numLoc)}</strong
+					>
+					<span class="go-key">{tr($locale, 'hud.scoreTime')}</span><strong class="go-part"
+						>{goDetail.scoreTime.toLocaleString(numLoc)}</strong
+					>
 				</div>
 				<p>
-					생존 시간
+					{tr($locale, 'hud.survivalTime')}
 					<strong
 						>{String(Math.floor(goDetail.survivalTime / 60)).padStart(2, '0')}:{String(
 							goDetail.survivalTime % 60
 						).padStart(2, '0')}</strong
 					>
 					<span class="go-inline-meta">
-						&nbsp;·&nbsp; 달성 레벨 <strong>{goDetail.level}</strong></span
+						&nbsp;·&nbsp; {tr($locale, 'hud.levelReached')} <strong>{goDetail.level}</strong></span
 					>
 				</p>
 				<div class="go-kill-block">
-					<div class="go-kill-title">보스 처치 (단계별)</div>
+					<div class="go-kill-title">{tr($locale, 'hud.bossKillsByWave')}</div>
 					<ul class="go-kill-list">
-						<li><span>강철 곰</span> <strong>{goDetail.bosses.bear}</strong></li>
-						<li><span>기계 늑대</span> <strong>{goDetail.bosses.wolf}</strong></li>
-						<li><span>철갑 드래곤</span> <strong>{goDetail.bosses.dragon}</strong></li>
-						<li><span>사이버 호랑이</span> <strong>{goDetail.bosses.tiger}</strong></li>
-						<li><span>아이언 로드</span> <strong>{goDetail.bosses.ironlord}</strong></li>
+						<li><span>{tr($locale, 'hud.bossBearTitle')}</span> <strong>{goDetail.bosses.bear}</strong></li>
+						<li><span>{tr($locale, 'hud.bossWolfTitle')}</span> <strong>{goDetail.bosses.wolf}</strong></li>
+						<li
+							><span>{tr($locale, 'hud.bossDragonTitle')}</span>
+							<strong>{goDetail.bosses.dragon}</strong></li
+						>
+						<li
+							><span>{tr($locale, 'hud.bossTigerTitle')}</span>
+							<strong>{goDetail.bosses.tiger}</strong></li
+						>
+						<li
+							><span>{tr($locale, 'hud.bossIronlordTitle')}</span>
+							<strong>{goDetail.bosses.ironlord}</strong></li
+						>
 					</ul>
 					<p class="go-norm-line">
-						일반 몬스터 처치 <strong>{goDetail.normalKills.toLocaleString('ko-KR')}</strong>
+						{tr($locale, 'hud.normalKills')}
+						<strong>{goDetail.normalKills.toLocaleString(numLoc)}</strong>
 					</p>
 					{#if goDetail.waveBossCount > 0}
-						<p class="go-wave-hint">(웨이브 난이도 기준 보스 격파 {goDetail.waveBossCount}회)</p>
+						<p class="go-wave-hint">
+							{tr($locale, 'hud.waveBossHint', { count: goDetail.waveBossCount })}
+						</p>
 					{/if}
 				</div>
 				<div class="go-actions">
-					<button type="button" class="go-btn" onclick={restart}>재시작</button>
-					<button type="button" class="go-btn go-btn-shop" onclick={goShop}>정비소</button>
+					<button type="button" class="go-btn" onclick={restart}>{tr($locale, 'hud.restart')}</button>
+					<button type="button" class="go-btn go-btn-shop" onclick={goShop}
+						>{tr($locale, 'hud.shop')}</button
+					>
 				</div>
 			</div>
 		</div>

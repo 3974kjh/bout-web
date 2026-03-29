@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { locale, translate as tr, mechShopLine } from '$lib/i18n';
 	import * as THREE from 'three';
 	import type { MechBase } from '$lib/domain/types';
 	import { createEvolvedModel, formForLevel, formStyleColors } from '$lib/game/entities/MechModel';
@@ -178,15 +179,14 @@
 </script>
 
 <section class="evo-guide" aria-labelledby="evo-guide-title">
-	<h3 id="evo-guide-title" class="evo-h3">레벨 → Form 진화 (시뮬레이션)</h3>
+	<h3 id="evo-guide-title" class="evo-h3">{tr($locale, 'shop.evoTitle')}</h3>
 	<p class="evo-lead">
 		{#if mechBase === 'expressive' || mechBase === 'soldier'}
-			<strong>{mechBase === 'soldier' ? '솔저' : '익스프레시브'}</strong>는 GLTF 본체에 <strong>재질 그레이딩</strong>과 함께,
-			레벨·Form에 따라 <strong>팔·다리·머리 부착 모듈</strong>·<strong>백 부스터</strong>·<strong>날개</strong>가 늘어납니다. 솔저는 three.js
-			<strong>Idle / Walk / Run</strong> 클립을 사용합니다. 다른 기체는 절차 메쉬 파이프라인이 서로 다릅니다.
+			{@html tr($locale, 'shop.evoLeadSkinnedHtml', {
+				name: mechShopLine($locale, mechBase, 'name')
+			})}
 		{:else}
-			기체마다 <strong>완전히 다른 3D 파이프라인</strong>(네모 / 세모 / 원형)으로 Form이 쌓입니다. 아래
-			<strong>Form 0~8</strong> 열과 라벨이 같은 순서입니다.
+			{@html tr($locale, 'shop.evoLeadProcHtml')}
 		{/if}
 	</p>
 
@@ -202,7 +202,7 @@
 		</div>
 	</div>
 
-	<div class="lv-matrix" role="list" aria-label="레벨 1부터 20까지 Form">
+	<div class="lv-matrix" role="list" aria-label={tr($locale, 'shop.evoMatrixAria')}>
 		{#each levelRows as row (row.level)}
 			<div
 				class="lv-cell"
@@ -214,7 +214,9 @@
 			</div>
 		{/each}
 	</div>
-	<p class="evo-foot">Lv 21 이상은 Lv 20과 같이 <strong>Form 8</strong>입니다.</p>
+	<p class="evo-foot">
+		{@html tr($locale, 'shop.evoFootHtml')}
+	</p>
 </section>
 
 <style>
