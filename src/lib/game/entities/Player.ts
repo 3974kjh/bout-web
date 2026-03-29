@@ -12,6 +12,7 @@ import { updateSkinnedPlayerEvolution } from './playerSkinnedEvolution';
 import { EventBus } from '../bridge/EventBus';
 import type { InputManager } from '../core/InputManager';
 import type { MechStats, PlayerState, StageQuery, PlayerUpgrades } from '$lib/domain/types';
+import { playPlayerDamage, playPlayerDash, playPlayerDeath } from '$lib/audio/sfx';
 import {
 	GRAVITY,
 	JUMP_FORCE,
@@ -375,7 +376,10 @@ export class Player {
 		}
 		if (this.stats.hp <= 0) {
 			this.state = 'dead';
+			playPlayerDeath();
 			// game-over 페이로드는 GameEngine.checkEnd에서 일괄 전송
+		} else {
+			playPlayerDamage();
 		}
 		return true;
 	}
@@ -664,6 +668,7 @@ export class Player {
 
 		// 속도 벡터 설정 — move()에서 매 프레임 감속 적용하며 실제 이동
 		this.dashVelocity.copy(dir).multiplyScalar(DASH_SPEED);
+		playPlayerDash();
 
 		this.dashCooldownMax = DASH_COOLDOWN * this.upgrades.dashCooldownMult;
 		this.dashCooldown = this.dashCooldownMax;

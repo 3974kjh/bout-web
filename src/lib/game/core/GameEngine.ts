@@ -27,6 +27,7 @@ import {
 	VICTORY_SURVIVAL_SECONDS
 } from '../constants/GameConfig';
 import { formForLevel } from '../entities/MechModel';
+import { playPlayerMissile } from '$lib/audio/sfx';
 
 /** 배경 4분면 쿼드를 카메라 앞에 둘 거리 */
 const BACKGROUND_QUAD_DISTANCE = 200;
@@ -410,6 +411,7 @@ export class GameEngine {
 		}
 
 		this.player.triggerFireFlash();
+		playPlayerMissile();
 		this.emitExpUpdate(); // 빈번한 emit 피하기 위해 fire 시 같이 갱신
 	}
 

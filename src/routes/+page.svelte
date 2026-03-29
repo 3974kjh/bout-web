@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
+
+	let audioSettingsOpen = $state(false);
 
 	onMount(() => {
 		const html = document.documentElement;
@@ -41,7 +44,7 @@
 			<p class="eyebrow">3D MECH · SURVIVE · AUTO FIRE</p>
 			<h1 class="title">BOUT</h1>
 			<p class="tagline">넓은 행성에서 몰려오는 기계 군단을 뚫고 살아남으세요.</p>
-			<p class="tagline-sub">자동 화력으로 전선을 유지하세요. 정비 없이 버티는 시간이 곧 기록입니다.</p>
+			<p class="tagline-sub">자동 화력으로 행성에서 15분동안 버티세요.</p>
 
 			<ul class="pills" aria-label="게임 특징">
 				<li>자동 사격</li>
@@ -115,7 +118,50 @@
 		</dl>
 	</section>
 
-	<footer class="foot">SvelteKit · Three.js · TypeScript</footer>
+	<footer class="foot">
+		<button type="button" class="foot-audio-open" onclick={() => (audioSettingsOpen = true)}>
+			<span class="foot-audio-open__icn" aria-hidden="true">
+				<svg viewBox="0 0 20 20" width="14" height="14" fill="none">
+					<line
+						x1="5"
+						y1="3"
+						x2="5"
+						y2="17"
+						stroke="currentColor"
+						stroke-width="1.35"
+						stroke-linecap="round"
+						opacity="0.4"
+					/>
+					<rect x="3.2" y="9" width="3.6" height="5" rx="1" fill="currentColor" />
+					<line
+						x1="10"
+						y1="3"
+						x2="10"
+						y2="17"
+						stroke="currentColor"
+						stroke-width="1.35"
+						stroke-linecap="round"
+						opacity="0.4"
+					/>
+					<rect x="8.2" y="5" width="3.6" height="5" rx="1" fill="currentColor" />
+					<line
+						x1="15"
+						y1="3"
+						x2="15"
+						y2="17"
+						stroke="currentColor"
+						stroke-width="1.35"
+						stroke-linecap="round"
+						opacity="0.4"
+					/>
+					<rect x="13.2" y="11" width="3.6" height="5" rx="1" fill="currentColor" />
+				</svg>
+			</span>
+			소리 설정
+		</button>
+	</footer>
+
+	<AudioSettingsModal bind:open={audioSettingsOpen} layer="landing" />
 </main>
 
 <style>
@@ -758,8 +804,52 @@
 		z-index: 1;
 		margin-top: clamp(0.35rem, 1.5vh, 1rem);
 		flex-shrink: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem 0.5rem;
 		font-size: 0.65rem;
 		letter-spacing: 0.14em;
 		color: rgba(120, 150, 170, 0.45);
+	}
+	.foot-audio-open {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: inherit;
+		letter-spacing: 0.12em;
+		font-weight: 600;
+		color: rgba(130, 200, 235, 0.72);
+		cursor: pointer;
+		text-decoration: underline;
+		text-decoration-color: rgba(0, 180, 220, 0.28);
+		text-underline-offset: 2px;
+		transition: color 0.15s;
+	}
+	.foot-audio-open__icn {
+		display: flex;
+		flex-shrink: 0;
+		opacity: 0.88;
+	}
+	.foot-audio-open:hover {
+		color: rgba(170, 230, 255, 0.95);
+		text-decoration-color: rgba(0, 210, 255, 0.45);
+	}
+	.foot-audio-open__chev {
+		margin-left: 0.12em;
+		font-weight: 300;
+		opacity: 0.7;
+	}
+	.foot-sep {
+		opacity: 0.55;
+		user-select: none;
+	}
+	.foot-meta {
+		letter-spacing: 0.14em;
 	}
 </style>

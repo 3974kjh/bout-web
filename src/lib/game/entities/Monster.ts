@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { playEnemyDamage, playEnemyDeath } from '$lib/audio/sfx';
 import { createAnimalRobotModel, createBossAnimalModel, type MechParts3D } from './MechModel';
 import type { MonsterAIState, MonsterConfig, StageQuery } from '$lib/domain/types';
 import { GRAVITY, KNOCKDOWN_THRESHOLD, KNOCKDOWN_MS } from '../constants/GameConfig';
@@ -508,6 +509,8 @@ export class Monster {
 
 	takeDamage(damage: number, knockDir?: THREE.Vector3, _forceKnockdown = false): void {
 		this.hp = Math.max(0, this.hp - damage);
+		if (this.hp <= 0) playEnemyDeath();
+		else playEnemyDamage();
 
 		// 피격 붉은 flash
 		this.parts.bodyMat.emissive.setHex(0xff0000);

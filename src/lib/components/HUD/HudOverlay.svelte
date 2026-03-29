@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { playUiBossWarning, playUiModalOpen } from '$lib/audio/sfx';
 	import { EventBus } from '$lib/game/bridge/EventBus';
 	import {
 		getUpgradePickInfo,
@@ -10,6 +11,7 @@
 	import { computeRunScore, VICTORY_SURVIVAL_SECONDS } from '$lib/game/constants/GameConfig';
 	import { getShopSettingsForGame, refreshShopSettingsForGame } from '$lib/game/shopGameCache';
 	import { appendRankRunRecord } from '$lib/storage/rankIndexedDb';
+	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
 	import HudEvoMiniPreview from '$lib/components/HUD/HudEvoMiniPreview.svelte';
 	import type { MechBase } from '$lib/domain/types';
 
@@ -196,6 +198,25 @@
 
 	// ── ESC 일시정지 ───────────────────────────────────────────────────────────
 	let pauseOpen = $state(false);
+	let audioSettingsOpen = $state(false);
+
+	let prevPauseOpen = false;
+	$effect(() => {
+		if (pauseOpen && !prevPauseOpen) playUiModalOpen();
+		prevPauseOpen = pauseOpen;
+	});
+
+	let prevShowCards = false;
+	$effect(() => {
+		if (showCards && !prevShowCards) playUiModalOpen();
+		prevShowCards = showCards;
+	});
+
+	let prevGameOver = false;
+	$effect(() => {
+		if (gameOver && !prevGameOver) playUiModalOpen();
+		prevGameOver = gameOver;
+	});
 
 	function togglePause(): void {
 		if (gameOver || showCards) return;
@@ -204,11 +225,13 @@
 	}
 
 	function resumeGame(): void {
+		audioSettingsOpen = false;
 		pauseOpen = false;
 		EventBus.emit('game-pause-set', { paused: false });
 	}
 
 	function goMenu(): void {
+		audioSettingsOpen = false;
 		pauseOpen = false;
 		EventBus.emit('game-pause-set', { paused: false });
 		goto('/');
@@ -226,6 +249,11 @@
 	function onKeydown(e: KeyboardEvent): void {
 		if (e.key === 'Escape') {
 			if (gameOver || showCards) return;
+			if (audioSettingsOpen) {
+				e.preventDefault();
+				audioSettingsOpen = false;
+				return;
+			}
 			e.preventDefault();
 			togglePause();
 			return;
@@ -292,6 +320,7 @@
 		showCards = true;
 	}
 	function onBossIncoming(): void {
+		playUiBossWarning();
 		bossAlert = true; bossCleared = false;
 		clearTimeout(bossAlertTimer);
 		bossAlertTimer = window.setTimeout(() => { bossAlert = false; }, 4000);
@@ -563,10 +592,61 @@
 
 	<!-- ── 일시정지 (ESC) ───────────────────────────────────────────────────── -->
 	{#if pauseOpen}
-		<div class="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+		<div
+			class="pause-overlay"
+			class:pause-overlay--blocked={audioSettingsOpen}
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="pause-title"
+		>
 			<div class="pause-modal">
 				<h2 id="pause-title">일시정지</h2>
 				<p class="pause-hint">ESC 키로 닫기</p>
+				<button
+					type="button"
+					class="pause-open-audio"
+					onclick={() => (audioSettingsOpen = true)}
+				>
+					<span class="pause-open-audio__icn" aria-hidden="true">
+						<svg viewBox="0 0 20 20" width="16" height="16" fill="none">
+							<line
+								x1="5"
+								y1="3"
+								x2="5"
+								y2="17"
+								stroke="currentColor"
+								stroke-width="1.35"
+								stroke-linecap="round"
+								opacity="0.4"
+							/>
+							<rect x="3.2" y="9" width="3.6" height="5" rx="1" fill="currentColor" />
+							<line
+								x1="10"
+								y1="3"
+								x2="10"
+								y2="17"
+								stroke="currentColor"
+								stroke-width="1.35"
+								stroke-linecap="round"
+								opacity="0.4"
+							/>
+							<rect x="8.2" y="5" width="3.6" height="5" rx="1" fill="currentColor" />
+							<line
+								x1="15"
+								y1="3"
+								x2="15"
+								y2="17"
+								stroke="currentColor"
+								stroke-width="1.35"
+								stroke-linecap="round"
+								opacity="0.4"
+							/>
+							<rect x="13.2" y="11" width="3.6" height="5" rx="1" fill="currentColor" />
+						</svg>
+					</span>
+					소리 설정
+					<span class="pause-open-audio__chev" aria-hidden="true">›</span>
+				</button>
 				<div class="pause-actions">
 					<button type="button" class="pause-btn primary" onclick={resumeGame}>계속하기</button>
 					<button type="button" class="pause-btn" onclick={goMenu}>메뉴로 돌아가기</button>
@@ -574,6 +654,8 @@
 			</div>
 		</div>
 	{/if}
+
+	<AudioSettingsModal bind:open={audioSettingsOpen} layer="game" />
 
 	<!-- ── 레벨업 카드 선택 ─────────────────────────────────────────────────── -->
 	{#if showCards}
@@ -869,9 +951,13 @@
 		z-index: 80;
 		backdrop-filter: blur(4px);
 	}
+	/* 소리 설정 모달이 열린 동안 일시정지 레이어가 포인터를 가로채지 않도록 */
+	.pause-overlay--blocked {
+		pointer-events: none;
+	}
 	.pause-modal {
 		padding: 28px 36px 32px;
-		min-width: 280px;
+		min-width: min(92vw, 300px);
 		border-radius: 12px;
 		background: linear-gradient(165deg, rgba(15, 25, 45, 0.96), rgba(8, 12, 28, 0.98));
 		border: 1px solid rgba(0, 200, 255, 0.35);
@@ -919,6 +1005,40 @@
 	}
 	.pause-btn.primary:hover {
 		box-shadow: 0 0 16px rgba(0, 200, 255, 0.35);
+	}
+	.pause-open-audio {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		margin: 0 auto 16px;
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: rgba(120, 210, 255, 0.88);
+		cursor: pointer;
+		text-decoration: underline;
+		text-decoration-color: rgba(0, 200, 255, 0.35);
+		text-underline-offset: 3px;
+		transition: color 0.15s;
+	}
+	.pause-open-audio:hover {
+		color: #bff;
+		text-decoration-color: rgba(0, 230, 255, 0.55);
+	}
+	.pause-open-audio__icn {
+		display: flex;
+		flex-shrink: 0;
+		opacity: 0.92;
+	}
+	.pause-open-audio__chev {
+		font-size: 1.05em;
+		font-weight: 300;
+		opacity: 0.75;
+		transform: translateY(-0.5px);
 	}
 
 	/* ── 미니맵 ── */
@@ -1016,9 +1136,12 @@
 	.card-desc   { font-size: 0.82rem; color: #ccc; line-height: 1.4; }
 	.card-rarity-tag { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.15em; opacity: 0.6; }
 
-	/* ── BOSS 배너 ── */
+	/* ── BOSS 배너 (뷰포트 높이 상단 1/3 구간의 중앙 ≈ top 16.67%) ── */
 	.boss-banner {
-		position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+		position: absolute;
+		top: calc(100% / 6);
+		left: 50%;
+		transform: translate(-50%, -50%);
 		animation: bossFlash 0.5s ease-in-out infinite alternate;
 	}
 	.boss-text {
