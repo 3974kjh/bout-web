@@ -20,7 +20,15 @@
 	import { locale, translate as tr, mechShopLine, missileSkinLabel } from '$lib/i18n';
 
 	const catalog = getAllCardsCatalog();
-	const mechOrder: MechBase[] = ['hypersuit', 'azonas-v', 'geren', 'expressive', 'soldier'];
+	const mechOrder: MechBase[] = [
+		'hypersuit',
+		'azonas-v',
+		'geren',
+		'expressive',
+		'soldier',
+		'cyberpunk-human',
+		'neon-human'
+	];
 
 	let settings = $state<ShopSettings>({ ...DEFAULT_SHOP_SETTINGS });
 	let loadError = $state<string | null>(null);

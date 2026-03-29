@@ -102,7 +102,7 @@
 		"loadFailed": "로드 실패",
 		"saveFailed": "저장 실패",
 		"secMech": "캐릭터 (기체)",
-		"secMechDesc": "시작 스탯이 다릅니다. 하이퍼슈트·아조나스 V·게렌은 <strong>절차적 진화 메쉬</strong>가 서로 다르고, <strong>익스프레시브</strong>·<strong>솔저</strong>는 GLTF 스키닝 + Form별 외장(게임과 동일). 솔저는 three.js Soldier.glb(Mixamo)입니다.",
+		"secMechDesc": "시작 스탯이 다릅니다. 하이퍼슈트·아조나스 V·게렌은 <strong>절차적 진화 메쉬</strong>가 서로 다릅니다. <strong>스키닝 GLB</strong> 기체(익스프레시브·솔저·로컬 <code>cyberpunk_human.glb</code>·<code>neon_human.glb</code>)는 리깅 모델에 Form·레벨에 따른 <strong>재질(색·발광)</strong>만 변합니다. 익스프레시브/솔저는 CDN 폴백이 있고, 사이버펑크·네온은 로컬 glb만 사용합니다.",
 		"secSkin": "공격 스킨 (미사일 색)",
 		"secSkinDesc": "플레이어 미사일 <code>Projectile</code> 재질 색상만 변경됩니다.",
 		"missileSkin": {

@@ -102,7 +102,7 @@
 		"loadFailed": "Load failed",
 		"saveFailed": "Save failed",
 		"secMech": "Character (chassis)",
-		"secMechDesc": "Starting stats differ. Hypersuit, Azonas V, and Geren use different <strong>procedural evolution meshes</strong>; <strong>Expressive</strong> and <strong>Soldier</strong> use skinned GLTF + per-form gear (same as in combat). Soldier uses the three.js Soldier.glb (Mixamo).",
+		"secMechDesc": "Starting stats differ. Hypersuit, Azonas V, and Geren use different <strong>procedural evolution meshes</strong>. <strong>Skinned GLB</strong> chassis (Expressive, Soldier, and five local <code>/models/*.glb</code> picks) load rigged models + the same per-form attach evolution as in combat. Expressive/Soldier keep CDN fallbacks; others use only local files.",
 		"secSkin": "Attack skin (missile color)",
 		"secSkinDesc": "Only the player missile <code>Projectile</code> material color changes.",
 		"missileSkin": {
@@ -180,12 +180,22 @@
 		"expressive": {
 			"name": "Expressive",
 			"tag": "GLTF · skinned",
-			"blurb": "Rigged GLB. Evolves by level/Form with color, material, and aura. Combat uses this GLTF when selected."
+			"blurb": "Rigged GLB. Level/Form shift color, emissive, and PBR; no extra geometry bolted on. Combat uses this GLTF when selected."
 		},
 		"soldier": {
 			"name": "Soldier",
 			"tag": "Mixamo · skinned",
 			"blurb": "three.js sample Soldier.glb — Idle/Walk/Run skeletal blend. Same GLB loads in combat."
+		},
+		"cyberpunk-human": {
+			"name": "Cyberpunk Human",
+			"tag": "Local GLB",
+			"blurb": "`cyberpunk_human.glb` — Idle/Walk/Run matched from clip names when available."
+		},
+		"neon-human": {
+			"name": "Neon Human",
+			"tag": "Local GLB · speed",
+			"blurb": "`neon_human.glb` — mobility-tuned stats; material evolution only (no attach meshes)."
 		}
 	}
 }

@@ -5,6 +5,7 @@
 	import { applyMechBaseTint } from '$lib/game/entities/mechShopTint';
 	import {
 		playerGltfUrlListForBase,
+		playerUsesSkinnedGltfForBase,
 		skinnedGltfLoadOptionsForBase
 	} from '$lib/game/constants/GameConfig';
 	import {
@@ -329,7 +330,7 @@
 			const scale = 0.8;
 			const y = STAGE_H + s.pedH;
 
-			if (mechBase === 'expressive' || mechBase === 'soldier') {
+			if (playerUsesSkinnedGltfForBase(mechBase)) {
 				const urls = playerGltfUrlListForBase(mechBase);
 				const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase, 'preview');
 				return loadSkinnedPlayerWithFallback(urls, gltfOpts).then((payload) => {

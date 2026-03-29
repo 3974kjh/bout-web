@@ -284,7 +284,7 @@ export function loadSkinnedPlayerGltf(
 
 				const idle =
 					pickSkinnedClip(actions, ['Idle', 'Standing', 'idle'], ['idle', 'stand', 'tpose']) ??
-					Object.values(actions)[0];
+					Object.values(actions)[2];
 				if (idle) idle.reset().setEffectiveWeight(1).play();
 
 				const bodyMat = firstStandardMaterial(root);

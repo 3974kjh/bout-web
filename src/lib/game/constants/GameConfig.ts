@@ -39,11 +39,22 @@ export const DASH_COOLDOWN = 3.0;   // 기본 쿨타임(초)
 export const DASH_SPEED    = 68;    // 대쉬 초기 속도 (units/s)
 export const DASH_DECEL    = 240;   // 감속도 (units/s²) — 약 0.28s 동안 약 8 유닛 이동
 
-/** true일 때 `expressive`·`soldier`는 GLTF 스키닝 캐릭터 로드. 다른 기체는 절차 메쉬만 사용. */
+/** true일 때 아래 `MECH_BASES_USING_SKINNED_GLTF`는 GLTF 스키닝 캐릭터 로드. 나머지는 절차 메쉬. */
 export const PLAYER_USE_SKINNED_GLTF = true;
 
+/** `static/models/*.glb` → `/models/…` (로컬 1순위). 익스프레시브·솔저는 CDN 폴백 유지. */
+export const MECH_BASES_USING_SKINNED_GLTF: readonly MechBase[] = [
+	'expressive',
+	'soldier',
+	'cyberpunk-human',
+	'neon-human'
+];
+
 export function playerUsesSkinnedGltfForBase(mechBase: MechBase): boolean {
-	return PLAYER_USE_SKINNED_GLTF && (mechBase === 'expressive' || mechBase === 'soldier');
+	return (
+		PLAYER_USE_SKINNED_GLTF &&
+		(MECH_BASES_USING_SKINNED_GLTF as readonly string[]).includes(mechBase)
+	);
 }
 
 /**
@@ -60,9 +71,17 @@ export const SOLDIER_GLTF_URLS: string[] = [
 	'https://threejs.org/examples/models/gltf/Soldier.glb'
 ];
 
+const LOCAL_GLTF_ONLY: Record<string, readonly string[]> = {
+	'cyberpunk-human': ['/models/cyberpunk_human.glb'],
+	'neon-human': ['/models/neon_human.glb']
+};
+
 export function playerGltfUrlListForBase(mechBase: MechBase): string[] {
-	if (mechBase === 'soldier') return SOLDIER_GLTF_URLS;
-	return PLAYER_GLTF_URLS;
+	if (mechBase === 'soldier') return [...SOLDIER_GLTF_URLS];
+	if (mechBase === 'expressive') return [...PLAYER_GLTF_URLS];
+	const local = LOCAL_GLTF_ONLY[mechBase];
+	if (local) return [...local];
+	return [...PLAYER_GLTF_URLS];
 }
 
 /** 인게임 Player vs 정비소·랭킹·HUD 등 프리뷰 — `modelRotationY`가 서로 반대 */

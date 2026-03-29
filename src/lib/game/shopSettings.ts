@@ -34,7 +34,15 @@ export function missileColorForSkin(skinId: string): number {
 	return s?.color ?? 0x00ccff;
 }
 
-const MECH_SET = new Set<MechBase>(['hypersuit', 'azonas-v', 'geren', 'expressive', 'soldier']);
+const MECH_SET = new Set<MechBase>([
+	'hypersuit',
+	'azonas-v',
+	'geren',
+	'expressive',
+	'soldier',
+	'cyberpunk-human',
+	'neon-human'
+]);
 
 function clampFavored(ids: string[]): string[] {
 	const seen = new Set<string>();
@@ -83,11 +91,21 @@ export const MECH_SHOP_INFO: Record<
 	expressive: {
 		name: '익스프레시브',
 		tag: 'GLTF · 스키닝',
-		blurb: '리깅 GLB. 레벨·Form마다 색·질감·오라로 진화합니다. 이 기체를 고르면 작전에서 GLTF가 사용됩니다.'
+		blurb: '리깅 GLB. 레벨·Form마다 색·발광·PBR만 진화합니다(추가 메시 없음). 이 기체를 고르면 작전에서 GLTF가 사용됩니다.'
 	},
 	soldier: {
 		name: '솔저',
 		tag: 'Mixamo · 스키닝',
 		blurb: 'three.js 예제 Soldier.glb — Idle/Walk/Run 스켈레탈 블렌딩. 작전에서 동일 GLB가 로드됩니다.'
+	},
+	'cyberpunk-human': {
+		name: '사이버펑크 휴먼',
+		tag: '로컬 GLB',
+		blurb: '`cyberpunk_human.glb` 리깅 캐릭터. 애니 클립 이름에 따라 Idle/Walk/Run이 자동 매칭됩니다.'
+	},
+	'neon-human': {
+		name: '네온 휴먼',
+		tag: '로컬 GLB · 기동',
+		blurb: '`neon_human.glb` — 높은 속도 보정 스탯. Form·레벨에 따른 재질(색·발광) 진화만 적용됩니다.'
 	}
 };

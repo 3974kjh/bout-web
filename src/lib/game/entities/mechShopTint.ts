@@ -21,6 +21,14 @@ const TINT: Record<MechBase, { body: THREE.Color; accent: THREE.Color }> = {
 	soldier: {
 		body: new THREE.Color(0x4a5c3e),
 		accent: new THREE.Color(0xc4b896)
+	},
+	'cyberpunk-human': {
+		body: new THREE.Color(0x2a1838),
+		accent: new THREE.Color(0xff3399)
+	},
+	'neon-human': {
+		body: new THREE.Color(0x152030),
+		accent: new THREE.Color(0x00ffcc)
 	}
 };
 

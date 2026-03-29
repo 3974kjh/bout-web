@@ -12,8 +12,10 @@ export const MECH_BASE_3D_NOTE: Record<MechBase, string> = {
 	hypersuit: `${MECH_SHOP_INFO.hypersuit.name}: Box 위주 진화 메쉬. HP/방어 높고 속도 보통.`,
 	'azonas-v': `${MECH_SHOP_INFO['azonas-v'].name}: Octahedron·Cone(3)·삼각기둥 위주. HP 낮고 공격·속도 높음.`,
 	geren: `${MECH_SHOP_INFO.geren.name}: Sphere·Cylinder·Torus 위주. HP·방어 최고, 속도 낮음.`,
-	expressive: `${MECH_SHOP_INFO.expressive.name}: GLTF 스키닝 + Form별 절차 외장. 스탯은 하이퍼슈트와 동일.`,
-	soldier: `${MECH_SHOP_INFO.soldier.name}: three.js Soldier.glb(Mixamo) 스키닝, Idle/Walk/Run.`
+	expressive: `${MECH_SHOP_INFO.expressive.name}: GLTF 스키닝. Form·레벨에 따른 재질(색·발광) 진화. 스탯은 하이퍼슈트와 동일.`,
+	soldier: `${MECH_SHOP_INFO.soldier.name}: three.js Soldier.glb(Mixamo) 스키닝, Idle/Walk/Run.`,
+	'cyberpunk-human': `${MECH_SHOP_INFO['cyberpunk-human'].name}: cyberpunk_human.glb.`,
+	'neon-human': `${MECH_SHOP_INFO['neon-human'].name}: neon_human.glb.`
 };
 
 /** 레벨 구간 ↔ form (MechModel.formForLevel) */

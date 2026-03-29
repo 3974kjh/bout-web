@@ -21,7 +21,9 @@
 		'azonas-v',
 		'geren',
 		'expressive',
-		'soldier'
+		'soldier',
+		'cyberpunk-human',
+		'neon-human'
 	];
 	function coerceMechBase(x: unknown): MechBase {
 		return typeof x === 'string' && (MECH_BASES as readonly string[]).includes(x)

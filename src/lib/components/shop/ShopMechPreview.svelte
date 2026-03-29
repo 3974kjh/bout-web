@@ -21,7 +21,7 @@
 
 	let host: HTMLDivElement | undefined = $state();
 	/** GLTF 스키닝은 네트워크·파싱 지연이 있어 로드 완료 전까지 오버레이 표시 */
-	let previewBusy = $state(mechBase === 'expressive' || mechBase === 'soldier');
+	let previewBusy = $state(playerUsesSkinnedGltfForBase(mechBase));
 
 	/** 정비소 미리보기: 최종 진화 단계(form 8) — `formForLevel(20)`과 동일 */
 	const PREVIEW_FORM = 8;
@@ -121,7 +121,7 @@
 			});
 		};
 
-		if (mechBase === 'expressive' || mechBase === 'soldier') {
+		if (playerUsesSkinnedGltfForBase(mechBase)) {
 			const urls = playerGltfUrlListForBase(mechBase);
 			const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase, 'preview');
 			void loadSkinnedPlayerWithFallback(urls, gltfOpts)
@@ -202,7 +202,7 @@
 	{/if}
 </div>
 <p class="preview-caption">
-	{#if mechBase === 'expressive' || mechBase === 'soldier'}
+	{#if playerUsesSkinnedGltfForBase(mechBase)}
 		{tr($locale, 'shop.previewCaptionSkinnedHtml', { form: String(PREVIEW_FORM) })}
 	{:else}
 		{tr($locale, 'shop.previewCaptionProcHtml', { form: String(PREVIEW_FORM) })}

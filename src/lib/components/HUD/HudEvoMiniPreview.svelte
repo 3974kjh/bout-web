@@ -26,9 +26,7 @@
 	const MODEL_SCALE_DEFAULT = 0.92;
 	/** 익스프레시브·솔저 GLTF는 동일 스케일에서 상대적으로 큼 → HUD에서만 약간 축소 */
 	function hudModelScaleFor(mb: MechBase): number {
-		return mb === 'expressive' || mb === 'soldier'
-			? MODEL_SCALE_DEFAULT * 0.78
-			: MODEL_SCALE_DEFAULT;
+		return playerUsesSkinnedGltfForBase(mb) ? MODEL_SCALE_DEFAULT * 0.78 : MODEL_SCALE_DEFAULT;
 	}
 	/** HUD: 카메라(+Z) 반대 방향을 바라보도록 Y 회전 (기존 정면 보정 0.08을 180° 뒤집음) */
 	const FACE_Y = Math.PI + 0.08;

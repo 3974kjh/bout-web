@@ -7,6 +7,7 @@
 	import { applyMechBaseTint } from '$lib/game/entities/mechShopTint';
 	import {
 		playerGltfUrlListForBase,
+		playerUsesSkinnedGltfForBase,
 		skinnedGltfLoadOptionsForBase
 	} from '$lib/game/constants/GameConfig';
 	import { loadSkinnedPlayerWithFallback } from '$lib/game/entities/playerSkinned';
@@ -37,7 +38,7 @@
 
 	let host: HTMLDivElement | undefined = $state();
 	/** 스키닝: GLTF 9회 로드 완료 전 캔버스 구간 로딩 표시 */
-	let evoStripBusy = $state(mechBase === 'expressive' || mechBase === 'soldier');
+	let evoStripBusy = $state(playerUsesSkinnedGltfForBase(mechBase));
 
 	onMount(() => {
 		if (!host) return;
@@ -119,7 +120,7 @@
 			tick();
 		};
 
-		if (mechBase === 'expressive' || mechBase === 'soldier') {
+		if (playerUsesSkinnedGltfForBase(mechBase)) {
 			const gltfUrls = playerGltfUrlListForBase(mechBase);
 			const gltfOpts = skinnedGltfLoadOptionsForBase(mechBase, 'preview');
 			void (async () => {
@@ -185,7 +186,7 @@
 <section class="evo-guide" aria-labelledby="evo-guide-title">
 	<h3 id="evo-guide-title" class="evo-h3">{tr($locale, 'shop.evoTitle')}</h3>
 	<p class="evo-lead">
-		{#if mechBase === 'expressive' || mechBase === 'soldier'}
+		{#if playerUsesSkinnedGltfForBase(mechBase)}
 			{@html tr($locale, 'shop.evoLeadSkinnedHtml', {
 				name: mechShopLine($locale, mechBase, 'name')
 			})}

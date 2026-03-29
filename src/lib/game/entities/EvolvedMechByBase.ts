@@ -809,8 +809,9 @@ export function createEvolvedModel(
 		case 'geren':
 			return buildEvolvedGeren(f, s);
 		case 'expressive':
-			return buildEvolvedHypersuit(f, s);
 		case 'soldier':
+		case 'cyberpunk-human':
+		case 'neon-human':
 			return buildEvolvedHypersuit(f, s);
 		default:
 			return buildEvolvedHypersuit(f, s);

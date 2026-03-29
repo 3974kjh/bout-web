@@ -47,6 +47,26 @@ const BASE_STATS: Record<MechBase, MechStats> = {
 		speed: 9,
 		transformGauge: 0,
 		maxTransformGauge: 100
+	},
+	/** `cyberpunk_human.glb` */
+	'cyberpunk-human': {
+		hp: 128,
+		maxHp: 128,
+		attack: 21,
+		defense: 11,
+		speed: 9,
+		transformGauge: 0,
+		maxTransformGauge: 100
+	},
+	/** `neon_human.glb` — 기동형 */
+	'neon-human': {
+		hp: 118,
+		maxHp: 118,
+		attack: 23,
+		defense: 8,
+		speed: 11,
+		transformGauge: 0,
+		maxTransformGauge: 100
 	}
 };
 

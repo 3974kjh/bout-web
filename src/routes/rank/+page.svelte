@@ -13,7 +13,9 @@
 		'azonas-v': '⚡',
 		geren: '🧱',
 		expressive: '✦',
-		soldier: '🎖'
+		soldier: '🎖',
+		'cyberpunk-human': '🌃',
+		'neon-human': '💠'
 	};
 
 	let records = $state<RankRunRecord[]>([]);

@@ -10,7 +10,9 @@ const MECH_SET = new Set<MechBase>([
 	'azonas-v',
 	'geren',
 	'expressive',
-	'soldier'
+	'soldier',
+	'cyberpunk-human',
+	'neon-human'
 ]);
 
 export type RankRunRecord = {

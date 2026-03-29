@@ -1,4 +1,11 @@
-export type MechBase = 'hypersuit' | 'azonas-v' | 'geren' | 'expressive' | 'soldier';
+export type MechBase =
+	| 'hypersuit'
+	| 'azonas-v'
+	| 'geren'
+	| 'expressive'
+	| 'soldier'
+	| 'cyberpunk-human'
+	| 'neon-human';
 export type PartSlot = 'head' | 'body' | 'arm' | 'leg' | 'weapon';
 
 export interface MechStats {
