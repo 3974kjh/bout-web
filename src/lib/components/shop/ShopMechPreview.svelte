@@ -5,6 +5,7 @@
 	import { applyMechBaseTint } from '$lib/game/entities/mechShopTint';
 	import {
 		playerGltfUrlListForBase,
+		playerUsesSkinnedGltfForBase,
 		skinnedGltfLoadOptionsForBase
 	} from '$lib/game/constants/GameConfig';
 	import {
@@ -19,14 +20,29 @@
 
 	let host: HTMLDivElement | undefined = $state();
 
-	/** 정비소 미리보기: 중간 진화 단계(form 4) — 실루엣이 읽기 쉬움 */
-	const PREVIEW_FORM = 4;
+	/** 정비소 미리보기: 최종 진화 단계(form 8) — `formForLevel(20)`과 동일 */
+	const PREVIEW_FORM = 8;
 	const MODEL_SCALE = 1.35;
-	const PREVIEW_LEVEL_FOR_FORM4 = 10;
+	const PREVIEW_LEVEL = 20;
 	/** 카메라(+Z) 반대를 기본 시선으로 (기존 0.35를 180° 뒤짐) */
 	const FACE_Y = Math.PI + 0.35;
 	/** `camera.lookAt`과 맞춰 바운딩 박스 중심을 화면 중앙에 둠 */
 	const FRAME_TARGET_Y = 1.15;
+
+	/**
+	 * 절차 메쉬(F8)와 GLTF 스키닝(익스프레시브/솔저) 바운딩·스케일이 달라 카메라 분리.
+	 * `forSkinned === false`: 기존 절차 기준. GLTF 실패 후 절차 폴백 시 `false`로 재적용.
+	 */
+	function setShopPreviewCamera(camera: THREE.PerspectiveCamera, forSkinned: boolean): void {
+		const ty = FRAME_TARGET_Y;
+		if (forSkinned) {
+			camera.position.set(0, ty + 0.78, 4.95);
+			camera.lookAt(0, ty + 0.06, 0);
+		} else {
+			camera.position.set(0, ty + 0.9, 6.8);
+			camera.lookAt(0, ty, 0);
+		}
+	}
 
 	function centerModelAtLookAt(root: THREE.Object3D): void {
 		root.updateMatrixWorld(true);
@@ -49,8 +65,7 @@
 		const w = host.clientWidth || 320;
 		const h = host.clientHeight || 280;
 		const camera = new THREE.PerspectiveCamera(42, w / h, 0.1, 80);
-		camera.position.set(0, FRAME_TARGET_Y + 0.95, 5.8);
-		camera.lookAt(0, FRAME_TARGET_Y, 0);
+		setShopPreviewCamera(camera, playerUsesSkinnedGltfForBase(mechBase));
 
 		const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -119,7 +134,7 @@
 						payload.root,
 						PREVIEW_FORM,
 						mechBase,
-						PREVIEW_LEVEL_FOR_FORM4
+						PREVIEW_LEVEL
 					);
 					payload.root.rotation.y = FACE_Y;
 					scene.add(payload.root);
@@ -134,6 +149,7 @@
 				})
 				.catch(() => {
 					if (!alive || !host) return;
+					setShopPreviewCamera(camera, false);
 					const { group } = createEvolvedModel(PREVIEW_FORM, MODEL_SCALE, mechBase);
 					applyMechBaseTint(group, mechBase);
 					group.rotation.y = FACE_Y;

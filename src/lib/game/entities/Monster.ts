@@ -413,12 +413,17 @@ export class Monster {
 
 		// 보스 AOE 공격 (정기 + 근접 AOE)
 		if (this.config.isBoss && this.config.aoeRadius) {
-			// 1) 정기 AOE — 고정 쿨다운
+			const burstBonus = this.config.bossAoeBurstBonus ?? 0;
+			const periodicExtra = this.config.bossAoePeriodicExtra ?? 0;
+			// 1) 정기 AOE — 고정 쿨다운 (+ 브루탈 시 추가 낙하)
 			this.aoeTimer += ms;
 			const coolMs = this.config.aoeCooldownMs ?? 7000;
 			if (this.aoeTimer >= coolMs) {
 				this.aoeTimer = 0;
 				this.fireAoeAtRandom(targetPos, 1.0);
+				for (let e = 0; e < periodicExtra; e++) {
+					this.fireAoeAtRandom(targetPos, 0.82 + (e % 2) * 0.08);
+				}
 			}
 			// 2) 근접 AOE — 공격 범위 내 진입 시 더 빠른 주기
 			if (dist < this.config.attackRange) {
@@ -426,8 +431,7 @@ export class Monster {
 				const proxCool = coolMs * 0.40;
 				if (this.proxAoeTimer >= proxCool) {
 					this.proxAoeTimer = 0;
-					// 작고 빠른 AOE를 2~3개 연속 배치
-					const count = 1 + Math.floor(Math.random() * 2);
+					const count = 1 + Math.floor(Math.random() * 2) + burstBonus;
 					for (let k = 0; k < count; k++) {
 						this.fireAoeAtRandom(targetPos, 0.65);
 					}
@@ -441,7 +445,7 @@ export class Monster {
 			this.animateMonster(isQuickAttacker, isHeavyAttacker);
 		}
 		this.updateHPBar();
-		this.updateDangerRing(stage);
+		this.updateDangerRing(stage, dist);
 	}
 
 	/** 타겟 근처 랜덤 위치에 AOE 발사 (scaleMult: 반경/속도 배율) */
@@ -589,7 +593,14 @@ export class Monster {
 		this.drawHpBar(ratio);
 	}
 
-	private updateDangerRing(stage: StageQuery): void {
+	private updateDangerRing(stage: StageQuery, horizontalDist: number): void {
+		// 원거리는 링이 거의 안 보이므로 getGroundHeight 2회/프레임 생략 (다수 몹 시 CPU 절감)
+		if (horizontalDist > 36) {
+			const mat = this.dangerRing.material as THREE.MeshBasicMaterial;
+			mat.opacity += (0 - mat.opacity) * 0.14;
+			this.dangerRing.position.y = this.dangerRingBaseY;
+			return;
+		}
 		// 발판 상면과 발 좌표가 소수 프레임 어긋나도, 월드에서 링이 항상 지면·발판 위에 깔리도록 보정
 		const footY = this.group.position.y;
 		const sx = this.group.position.x;

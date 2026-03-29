@@ -33,6 +33,21 @@
 	/** HUD: 카메라(+Z) 반대 방향을 바라보도록 Y 회전 (기존 정면 보정 0.08을 180° 뒤집음) */
 	const FACE_Y = Math.PI + 0.08;
 
+	/**
+	 * 미니 프리뷰 카메라 — 절차 메쉬(하이퍼슈트 등)와 GLTF 스키닝(익스프레시브/솔저) 바운딩이 달라 분리.
+	 * `forSkinned === false`: 절차 메쉬 기준(기존 값).
+	 * GLTF 로드 실패 후 절차 폴백 시에는 반드시 `forSkinned: false`로 다시 호출.
+	 */
+	function setHudEvoCameraView(camera: THREE.PerspectiveCamera, forSkinned: boolean): void {
+		if (forSkinned) {
+			camera.position.set(0, 1.52, 3.65);
+			camera.lookAt(0, 1.28, 0);
+		} else {
+			camera.position.set(0, 1.72, 4.55);
+			camera.lookAt(0, 1.68, 0);
+		}
+	}
+
 	const ctx: {
 		scene: THREE.Scene | null;
 		kind: 'none' | 'skinned' | 'procedural';
@@ -107,9 +122,9 @@
 
 		const w = host.clientWidth || 88;
 		const h = host.clientHeight || 110;
-		const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 60);
-		camera.position.set(0, 1.72, 4.55);
-		camera.lookAt(0, 0.92, 0);
+		const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 60);
+		const mbPreview = mechBase;
+		setHudEvoCameraView(camera, playerUsesSkinnedGltfForBase(mbPreview));
 
 		const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -146,7 +161,7 @@
 			raf = requestAnimationFrame(tick);
 		};
 
-		const mb0 = mechBase;
+		const mb0 = mbPreview;
 		const f0 = formForLevel(level);
 
 		if (playerUsesSkinnedGltfForBase(mb0)) {
@@ -177,6 +192,7 @@
 				})
 				.catch(() => {
 					if (!alive || !host) return;
+					setHudEvoCameraView(camera, false);
 					applyProcedural(f0, mb0, scene);
 					ctx.mixer = null;
 					loadComplete = true;

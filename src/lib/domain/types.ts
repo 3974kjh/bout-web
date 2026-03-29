@@ -65,6 +65,10 @@ export interface MonsterConfig {
 	aoeRadius?: number;
 	aoeFillMs?: number;
 	aoeCooldownMs?: number;
+	/** 브루탈 난이도: 근접 AOE 연쇄 개수 가산 */
+	bossAoeBurstBonus?: number;
+	/** 브루탈 난이도: 정기 AOE 틱당 추가 발사 횟수 */
+	bossAoePeriodicExtra?: number;
 }
 
 export interface StageQuery {

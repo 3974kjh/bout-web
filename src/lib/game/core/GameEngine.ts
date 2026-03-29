@@ -87,6 +87,14 @@ export class GameEngine {
 	private playerMissileColor = 0x00ccff;
 	private favoredCardIds: string[] = [];
 
+	/** 분리 연산·투사체 광역판정 등에 재사용 (프레임당 GC 감소) */
+	private readonly _scratchPrevProj = new THREE.Vector3();
+	private readonly _scratchTargetPt = new THREE.Vector3();
+	private aliveMonsterScratch: Monster[] = [];
+	private simFrame = 0;
+	private separateCellBuckets = new Map<string, number[]>();
+	private separateBucketPool: number[][] = [];
+
 	// 보스 AOE: 고정 외곽 링 + 중심에서 바깥으로 채워지는 원, 타격 시 보스별 연출
 	private aoeEffects: Array<{
 		rim: THREE.Mesh;
@@ -267,6 +275,8 @@ export class GameEngine {
 		this.normalMonsterKills = 0;
 		this.bossKillsByType = { bear: 0, wolf: 0, dragon: 0, tiger: 0, ironlord: 0 };
 		this.emitKillStats();
+		// HUD·난이도용 levelSystem.level 과 3D 진화 단계(Player) 동기화
+		this.player.setLevel(this.levelSystem.level);
 		this.emitExpUpdate();
 	}
 
@@ -284,6 +294,7 @@ export class GameEngine {
 		const dt = Math.min(this.clock.getDelta(), 0.05);
 
 		if (!this.isGameOver && !this.isLevelUpPaused && !this.isEscapePaused) {
+			this.simFrame++;
 			this.input.update();
 			this.player.update(dt, this.input, this.stage);
 
@@ -359,6 +370,35 @@ export class GameEngine {
 
 	// ─── 자동 미사일 ────────────────────────────────────────────────────────────
 
+	/** 발사에 필요한 만큼만 거리순 타겟 선택 (전체 정렬 O(n log n) 제거) */
+	private pickMissileTargets(pp: THREE.Vector3, alive: Monster[], want: number): Monster[] {
+		const n = Math.min(want, alive.length);
+		const out: Monster[] = [];
+		const used = new Set<Monster>();
+		const fireY = pp.y + 1.8;
+		for (let k = 0; k < n; k++) {
+			let best: Monster | null = null;
+			let bestD = Infinity;
+			for (const m of alive) {
+				if (used.has(m)) continue;
+				const aimY = 1.0 + 0.5 * m.config.scale;
+				const dx = m.group.position.x - pp.x;
+				const dy = m.group.position.y + aimY - fireY;
+				const dz = m.group.position.z - pp.z;
+				const d2 = dx * dx + dy * dy + dz * dz;
+				if (d2 < bestD) {
+					bestD = d2;
+					best = m;
+				}
+			}
+			if (best) {
+				used.add(best);
+				out.push(best);
+			}
+		}
+		return out;
+	}
+
 	private updateAutoFire(dt: number): void {
 		const u = this.player.upgrades;
 		const effectiveRate = u.fireRateMs;
@@ -366,12 +406,17 @@ export class GameEngine {
 		if (this.playerFireTimer < effectiveRate) return;
 		this.playerFireTimer -= effectiveRate;
 
-		const alive = this.monsters.filter((m) => !m.isDead());
+		const alive = this.aliveMonsterScratch;
+		alive.length = 0;
+		for (const m of this.monsters) {
+			if (!m.isDead()) alive.push(m);
+		}
 		if (alive.length === 0) return;
 
-		// 가장 가까운 적 찾기
 		const pp = this.player.group.position;
-		alive.sort((a, b) => a.group.position.distanceTo(pp) - b.group.position.distanceTo(pp));
+		const shotCount = u.missileCount + (u.spreadShot ? 2 : 0);
+		const targets = this.pickMissileTargets(pp, alive, shotCount);
+		if (targets.length === 0) return;
 
 		// 발사할 각도 목록 (스프레드샷 포함)
 		const angles: number[] = [0];
@@ -384,12 +429,13 @@ export class GameEngine {
 			}
 		}
 
-		for (let mi = 0; mi < u.missileCount + (u.spreadShot ? 2 : 0); mi++) {
-			const target = alive[mi % alive.length];
-			const fireY = pp.y + 1.8;
-			const origin = new THREE.Vector3(pp.x, fireY, pp.z);
+		const origin = new THREE.Vector3(pp.x, pp.y + 1.8, pp.z);
+		const targetPt = this._scratchTargetPt;
+
+		for (let mi = 0; mi < shotCount; mi++) {
+			const target = targets[mi % targets.length];
 			const aimY = 1.0 + 0.5 * target.config.scale;
-			const targetPt = target.group.position.clone().add(new THREE.Vector3(0, aimY, 0));
+			targetPt.set(target.group.position.x, target.group.position.y + aimY, target.group.position.z);
 
 			const baseDir = new THREE.Vector3().subVectors(targetPt, origin).normalize();
 			const angleOff = angles[mi] ?? 0;
@@ -435,12 +481,36 @@ export class GameEngine {
 		return GameEngine.segmentDistSqToPoint(ax, ay, az, bx, by, bz, cx, cy, cz) <= r * r;
 	}
 
+	/** XZ 평면에서 선분–점 거리² (미사일–적 광역 탈락용) */
+	private static segmentDistSqXZ(
+		ax: number,
+		az: number,
+		bx: number,
+		bz: number,
+		px: number,
+		pz: number
+	): number {
+		const abx = bx - ax,
+			abz = bz - az;
+		const apx = px - ax,
+			apz = pz - az;
+		const abLenSq = abx * abx + abz * abz;
+		const t =
+			abLenSq < 1e-14 ? 0 : Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLenSq));
+		const qx = ax + abx * t,
+			qz = az + abz * t;
+		const dx = px - qx,
+			dz = pz - qz;
+		return dx * dx + dz * dz;
+	}
+
 	private updatePlayerProjectiles(dt: number): void {
 		const u = this.player.upgrades;
 		const canPierceObstacle = u.piercingCount > 0;
+		const prevPos = this._scratchPrevProj;
 		for (let i = this.playerProjectiles.length - 1; i >= 0; i--) {
 			const p = this.playerProjectiles[i];
-			const prevPos = p.mesh.position.clone();
+			prevPos.copy(p.mesh.position);
 			p.update(dt);
 			if (!p.alive) { p.dispose(this.scene); this.playerProjectiles.splice(i, 1); continue; }
 
@@ -467,6 +537,12 @@ export class GameEngine {
 				if (m.config.isBoss) hitRadius *= 1.08;
 				const ax = prevPos.x, ay = prevPos.y, az = prevPos.z;
 				const bx = p.mesh.position.x, by = p.mesh.position.y, bz = p.mesh.position.z;
+				const looseR = hitRadius + 1.4;
+				if (
+					GameEngine.segmentDistSqXZ(ax, az, bx, bz, cx, cz) > looseR * looseR
+				) {
+					continue;
+				}
 				if (!GameEngine.segmentHitsSphere(ax, ay, az, bx, by, bz, cx, cy, cz, hitRadius)) continue;
 
 				// 히트!
@@ -526,9 +602,11 @@ export class GameEngine {
 	// ─── 적 발사체 ───────────────────────────────────────────────────────────────
 
 	private updateEnemyProjectiles(dt: number): void {
+		const prevPos = this._scratchPrevProj;
+		const pp = this.player.group.position;
 		for (let i = this.projectiles.length - 1; i >= 0; i--) {
 			const p = this.projectiles[i];
-			const prevPos = p.mesh.position.clone();
+			prevPos.copy(p.mesh.position);
 			p.update(dt);
 			if (p.alive) {
 				// 적 미사일도 장애물에 막힘
@@ -538,8 +616,10 @@ export class GameEngine {
 				}
 			}
 			if (p.alive) {
-				const dist = p.mesh.position.distanceTo(this.player.group.position);
-				if (dist < 1.2) {
+				const ex = p.mesh.position.x - pp.x;
+				const ey = p.mesh.position.y - pp.y;
+				const ez = p.mesh.position.z - pp.z;
+				if (ex * ex + ey * ey + ez * ez < 1.44) {
 					const knockDir = new THREE.Vector3()
 						.subVectors(this.player.group.position, p.mesh.position)
 						.setY(0)
@@ -919,11 +999,15 @@ export class GameEngine {
 
 	// ─── 스폰 ────────────────────────────────────────────────────────────────────
 
-	/** 레벨 20+ — 스탯·사거리 몬스터 탄속·연사 가속 */
+	/** 레벨 15+ — 스탯·사거리 몬스터 탄속·연사·보스 AOE 압박 가속 */
 	private applyLateGameDifficulty(cfg: MonsterConfig): MonsterConfig {
 		const b = lateGameBrutality(this.levelSystem.level);
 		const mul = cfg.isBoss ? b.bossStatMul : b.statMul;
 		if (mul <= 1) return cfg;
+		const aoeExtraTight =
+			cfg.isBoss && cfg.aoeCooldownMs != null
+				? Math.max(0.55, 0.92 - b.bossAoeBurstBonus * 0.045 - b.bossAoePeriodicExtra * 0.04)
+				: 1;
 		return {
 			...cfg,
 			hp: Math.round(cfg.hp * mul),
@@ -933,7 +1017,16 @@ export class GameEngine {
 			projectileSpeed:
 				cfg.projectileSpeed != null ? cfg.projectileSpeed * (1 + (mul - 1) * 0.22) : undefined,
 			fireRateMs: cfg.fireRateMs != null ? Math.max(220, cfg.fireRateMs * 0.76) : undefined,
-			aoeCooldownMs: cfg.aoeCooldownMs != null ? Math.max(1800, cfg.aoeCooldownMs * 0.86) : undefined
+			aoeCooldownMs:
+				cfg.aoeCooldownMs != null
+					? Math.max(900, cfg.aoeCooldownMs * 0.86 * aoeExtraTight)
+					: undefined,
+			...(cfg.isBoss
+				? {
+						bossAoeBurstBonus: b.bossAoeBurstBonus,
+						bossAoePeriodicExtra: b.bossAoePeriodicExtra
+					}
+				: {})
 		};
 	}
 
@@ -1474,26 +1567,68 @@ export class GameEngine {
 
 	// ─── 몬스터 분리힘 (서로 겹치지 않도록) ─────────────────────────────────────
 
-	private separateMonsters(): void {
+	private resolveMonsterSeparation(a: Monster, b: Monster): void {
 		const MIN = 1.1;
+		if (a.isDead() || b.isDead()) return;
+		const dx = b.group.position.x - a.group.position.x;
+		const dz = b.group.position.z - a.group.position.z;
+		const d2 = dx * dx + dz * dz;
+		const minD = MIN * ((a.config.scale + b.config.scale) * 0.5);
+		if (d2 >= minD * minD || d2 <= 0.001) return;
+		const d = Math.sqrt(d2);
+		const push = (minD - d) * 0.5;
+		const nx = dx / d,
+			nz = dz / d;
+		a.group.position.x -= nx * push;
+		a.group.position.z -= nz * push;
+		b.group.position.x += nx * push;
+		b.group.position.z += nz * push;
+	}
+
+	/** 3×3 셀 이웃만 검사 + 다수일 때 격프레임으로 비용 절감 */
+	private separateMonsters(): void {
+		let alive = 0;
+		for (const m of this.monsters) {
+			if (!m.isDead()) alive++;
+		}
+		if (alive > 40 && (this.simFrame & 1)) return;
+
+		const CELL = 5;
+		const map = this.separateCellBuckets;
+		for (const arr of map.values()) {
+			arr.length = 0;
+			this.separateBucketPool.push(arr);
+		}
+		map.clear();
+
+		for (let i = 0; i < this.monsters.length; i++) {
+			const m = this.monsters[i];
+			if (m.isDead()) continue;
+			const ix = Math.floor(m.group.position.x / CELL);
+			const iz = Math.floor(m.group.position.z / CELL);
+			const key = ix + ',' + iz;
+			let bucket = map.get(key);
+			if (!bucket) {
+				bucket = this.separateBucketPool.pop() ?? [];
+				map.set(key, bucket);
+			}
+			bucket.push(i);
+		}
+
 		for (let i = 0; i < this.monsters.length; i++) {
 			const a = this.monsters[i];
 			if (a.isDead()) continue;
-			for (let j = i + 1; j < this.monsters.length; j++) {
-				const b = this.monsters[j];
-				if (b.isDead()) continue;
-				const dx = b.group.position.x - a.group.position.x;
-				const dz = b.group.position.z - a.group.position.z;
-				const d2 = dx * dx + dz * dz;
-				const minD = MIN * ((a.config.scale + b.config.scale) * 0.5);
-				if (d2 < minD * minD && d2 > 0.001) {
-					const d = Math.sqrt(d2);
-					const push = (minD - d) * 0.5;
-					const nx = dx / d, nz = dz / d;
-					a.group.position.x -= nx * push;
-					a.group.position.z -= nz * push;
-					b.group.position.x += nx * push;
-					b.group.position.z += nz * push;
+			const ix = Math.floor(a.group.position.x / CELL);
+			const iz = Math.floor(a.group.position.z / CELL);
+			for (let dx = -1; dx <= 1; dx++) {
+				for (let dz = -1; dz <= 1; dz++) {
+					const key = ix + dx + ',' + (iz + dz);
+					const arr = map.get(key);
+					if (!arr) continue;
+					for (const j of arr) {
+						if (j <= i) continue;
+						this.resolveMonsterSeparation(a, this.monsters[j]);
+					}
 				}
 			}
 		}

@@ -483,15 +483,34 @@ export class Player {
 		const cx = (b.minX + b.maxX) * 0.5;
 		const cz = (b.minZ + b.maxZ) * 0.5;
 		const gy = stage.getGroundHeight(cx, cz, 45);
-		this.group.position.set(cx, gy, cz);
-		this.velocityY = 0;
-		this.isOnGround = true;
+		const dmg = Math.floor(this.stats.maxHp * 0.5);
+		const nextHp = this.stats.hp - dmg;
+
 		this.outOfBoundsFallMs = 0;
 		this.jumpsUsed = 0;
 		this.doubleJumpSpinLeft = 0;
 		this.doubleJumpSpinApplied = 0;
-		const dmg = Math.floor(this.stats.maxHp * 0.5);
-		this.stats.hp = Math.max(1, this.stats.hp - dmg);
+		this.velocityY = 0;
+
+		if (nextHp <= 0) {
+			const lost = this.stats.hp;
+			this.stats.hp = 0;
+			this.state = 'dead';
+			this.hitFlashTimer = 280;
+			playPlayerDeath();
+			this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
+			EventBus.emit('hp-update', { hp: this.stats.hp, maxHp: this.stats.maxHp });
+			EventBus.emit('damage-number', {
+				pos: this.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+				amount: lost,
+				type: 'take'
+			});
+			return;
+		}
+
+		this.group.position.set(cx, gy, cz);
+		this.isOnGround = true;
+		this.stats.hp = nextHp;
 		this.hitFlashTimer = 280;
 		this.drawHeadHud(this.stats.hp, this.stats.maxHp, this.currentLevel);
 		EventBus.emit('hp-update', { hp: this.stats.hp, maxHp: this.stats.maxHp });

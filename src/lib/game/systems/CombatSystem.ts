@@ -22,25 +22,31 @@ export class CombatSystem {
 	}
 
 	private monsterAttacks(): void {
+		const pp = this.player.group.position;
+		const hitR2 = 3.5 * 3.5;
 		for (const m of this.monsters) {
-			if (m.isDead()) continue;
-			const dist = m.group.position.distanceTo(this.player.group.position);
-			const knockDir = new THREE.Vector3()
-				.subVectors(this.player.group.position, m.group.position)
-				.setY(0)
-				.normalize();
+			if (m.isDead() || !m.isInAttackState()) continue;
+			const mx = m.group.position.x,
+				my = m.group.position.y,
+				mz = m.group.position.z;
+			const dx = pp.x - mx,
+				dy = pp.y - my,
+				dz = pp.z - mz;
+			if (dx * dx + dy * dy + dz * dz > hitR2) continue;
 
-			// 공격 모션 히트만 (접촉 범위 데미지 없음)
-			if (m.isInAttackState() && dist <= 3.5) {
-				const dmg = calculateDamage(m.config.attack, this.player.stats.defense);
-				const hit = this.player.takeDamage(dmg, knockDir);
-				if (hit) {
-					EventBus.emit('damage-number', {
-						pos: this.player.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
-						amount: dmg, type: 'take'
-					});
-					EventBus.emit('player-hit', { damage: dmg });
-				}
+			const knockDir = new THREE.Vector3(dx, 0, dz);
+			if (knockDir.lengthSq() < 1e-10) continue;
+			knockDir.normalize();
+
+			const dmg = calculateDamage(m.config.attack, this.player.stats.defense);
+			const hit = this.player.takeDamage(dmg, knockDir);
+			if (hit) {
+				EventBus.emit('damage-number', {
+					pos: this.player.group.position.clone().add(new THREE.Vector3(0, 2.5, 0)),
+					amount: dmg,
+					type: 'take'
+				});
+				EventBus.emit('player-hit', { damage: dmg });
 			}
 		}
 	}

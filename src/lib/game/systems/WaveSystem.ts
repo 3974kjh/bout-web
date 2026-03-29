@@ -110,10 +110,10 @@ export class WaveSystem {
 		this.spawnClock += dt;
 		this.bossClock  += dt;
 
-		const spawnBoss = this.bossClock >= BOSS_INTERVAL;
-		if (spawnBoss) this.bossClock -= BOSS_INTERVAL;
-
 		const brutal = lateGameBrutality(playerLevel);
+		const bossEvery = BOSS_INTERVAL * brutal.bossSpawnIntervalScale;
+		const spawnBoss = this.bossClock >= bossEvery;
+		if (spawnBoss) this.bossClock -= bossEvery;
 		const effInterval = Math.max(0.14, this.spawnInterval * brutal.spawnIntervalMul);
 		const cap = Math.min(100, Math.floor(Math.min(30 + this.bossCount * 12, 100) * brutal.maxAliveMul));
 

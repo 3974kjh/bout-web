@@ -89,11 +89,14 @@ export function skinnedGltfLoadOptionsForBase(
 }
 
 /**
- * `PLAYER_USE_SKINNED_GLTF` 가 false 일 때 필드(Player)에서만 절차 메쉬 기체의 시각적 전방을 뒤짐.
- * 하이퍼슈트·아조나스·게렌은 메쉬 축이 다른 기체와 달라 `skinnedGltfLoadOptionsForBase` 의 gameplay/preview 반전과 같은 역할.
+ * 필드(Player)에서 절차 메쉬 그룹의 시각적 전방을 이동 방향(`facing`)과 맞추기 위한 Y축 보정.
+ * 하이퍼슈트·아조나스·게렌은 메쉬 전방 축이 다른 절차 기체와 달라 π 만큼 보정한다.
+ *
+ * 주의: `PLAYER_USE_SKINNED_GLTF === true` 여도 이 세 기체는 절차 메쉬만 쓰므로, 예전처럼
+ * 플래그만 보고 전부 0을 반환하면 보정이 영원히 적용되지 않는다. GLTF를 쓰는 기체만 0.
  */
 export function proceduralGameplayExtraRotationY(mechBase: MechBase): number {
-	if (PLAYER_USE_SKINNED_GLTF) return 0;
+	if (playerUsesSkinnedGltfForBase(mechBase)) return 0;
 	if (mechBase === 'hypersuit' || mechBase === 'azonas-v' || mechBase === 'geren') {
 		return Math.PI;
 	}
@@ -143,17 +146,23 @@ export function visualThemeImageIndexFromForm(form: number): number {
 export const VICTORY_SURVIVAL_SECONDS = 15 * 60;
 
 /**
- * 이 레벨을 **초과**하면(20+) 일반·보스 스폰·스탯·적 탄속이 급격히 강화된다.
+ * 이 레벨을 **초과**하면(15+) 일반·보스 스폰·스탯·적 탄속이 급격히 강화된다.
  */
-export const LEVEL_BRUTAL_AFTER = 19;
+export const LEVEL_BRUTAL_AFTER = 14;
 
-/** 레벨 21+ 극난이도 배율 — 스폰·스탯·보스·탄속 */
+/** 레벨 16+ 극난이도 배율 — 스폰·스탯·보스·탄속·보스 등장 간격·AOE */
 export function lateGameBrutality(level: number): {
 	statMul: number;
 	spawnIntervalMul: number;
 	bossStatMul: number;
 	maxAliveMul: number;
 	enemyProjectileSpeedMul: number;
+	/** 기본 보스 간격(초)에 곱함 — 작을수록 보스가 자주 등장 */
+	bossSpawnIntervalScale: number;
+	/** 보스 근접 AOE 연쇄에 가산되는 횟수 */
+	bossAoeBurstBonus: number;
+	/** 보스 정기 AOE 쿨마다 추가로 떨어지는 AOE 횟수 */
+	bossAoePeriodicExtra: number;
 } {
 	if (level <= LEVEL_BRUTAL_AFTER) {
 		return {
@@ -161,16 +170,22 @@ export function lateGameBrutality(level: number): {
 			spawnIntervalMul: 1,
 			bossStatMul: 1,
 			maxAliveMul: 1,
-			enemyProjectileSpeedMul: 1
+			enemyProjectileSpeedMul: 1,
+			bossSpawnIntervalScale: 1,
+			bossAoeBurstBonus: 0,
+			bossAoePeriodicExtra: 0
 		};
 	}
-	const steps = Math.min(level - LEVEL_BRUTAL_AFTER, 30);
+	const steps = Math.min(level - LEVEL_BRUTAL_AFTER, 40);
 	return {
 		statMul: 1.72 + steps * 0.065,
 		spawnIntervalMul: 0.34,
 		bossStatMul: 1.58 + steps * 0.045,
 		maxAliveMul: 1.24,
-		enemyProjectileSpeedMul: 1.28 + steps * 0.018
+		enemyProjectileSpeedMul: 1.28 + steps * 0.018,
+		bossSpawnIntervalScale: Math.max(0.2, 0.9 - steps * 0.032),
+		bossAoeBurstBonus: Math.min(5, 1 + Math.floor(steps / 2)),
+		bossAoePeriodicExtra: Math.min(4, Math.floor(steps / 3))
 	};
 }
 

@@ -1,11 +1,14 @@
 /** 경험치 & 레벨업 시스템 */
+/** 게임 시작(및 reset) 시 플레이어 레벨 — 높이려면 이 값만 바꿔도 됨 */
+export const GAME_START_LEVEL = 1;
+
 export class LevelSystem {
-	level = 1;
+	level = GAME_START_LEVEL;
 	exp = 0;
 	expToNext: number;
 
 	constructor() {
-		this.expToNext = this.calcRequired(1);
+		this.expToNext = this.calcRequired(this.level);
 	}
 
 	private calcRequired(lv: number): number {
@@ -30,8 +33,8 @@ export class LevelSystem {
 	}
 
 	reset(): void {
-		this.level = 1;
+		this.level = GAME_START_LEVEL;
 		this.exp = 0;
-		this.expToNext = this.calcRequired(1);
+		this.expToNext = this.calcRequired(this.level);
 	}
 }

@@ -193,6 +193,8 @@
 	let levelUpNum = $state(1);
 	let cardModalTitle = $state('🌟 LEVEL UP');
 	let cardPickHint = $state('카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요');
+	/** 카드 모달이 열릴 때마다 증가 — 등장 Y축 회전 애니 재생 */
+	let cardAnimEpoch = $state(0);
 
 	// ── ESC 일시정지 ───────────────────────────────────────────────────────────
 	let pauseOpen = $state(false);
@@ -308,6 +310,7 @@
 		cards = d.cards;
 		cardModalTitle = `🌟 LEVEL UP — Lv.${d.level}`;
 		cardPickHint = '카드를 선택하거나 키보드 1 / 2 / 3 를 누르세요';
+		cardAnimEpoch++;
 		showCards = true;
 	}
 	function onFieldCardOffer(...args: unknown[]): void {
@@ -315,6 +318,7 @@
 		cards = d.cards;
 		cardModalTitle = '📦 보급 캐시';
 		cardPickHint = '고지대 보급 — 1 · 2 · 3 키로 카드 1장을 선택하세요';
+		cardAnimEpoch++;
 		showCards = true;
 	}
 	function onBossIncoming(): void {
@@ -637,20 +641,25 @@
 			<div class="card-modal">
 				<div class="card-title">{cardModalTitle}</div>
 				<p class="card-hint">{cardPickHint}</p>
-				<div class="card-row">
-					{#each cards as card, i (card.id)}
-						<button
-							class="upgrade-card rarity-{card.rarity}"
-							onclick={() => selectCard(i)}
-						>
-							<div class="card-num">[{i + 1}]</div>
-							<div class="card-emoji">{card.emoji}</div>
-							<div class="card-name">{card.name}</div>
-							<div class="card-desc">{card.description}</div>
-							<div class="card-rarity-tag">{card.rarity.toUpperCase()}</div>
-						</button>
-					{/each}
-				</div>
+				{#key cardAnimEpoch}
+					<div class="card-row">
+						{#each cards as card, i (card.id)}
+							<button
+								type="button"
+								class="upgrade-card rarity-{card.rarity}"
+								style="--card-i:{i}"
+								onclick={() => selectCard(i)}
+							>
+								<span class="card-arcade-shine" aria-hidden="true"></span>
+								<div class="card-num">[{i + 1}]</div>
+								<div class="card-emoji">{card.emoji}</div>
+								<div class="card-name">{card.name}</div>
+								<div class="card-desc">{card.description}</div>
+								<div class="card-rarity-tag">{card.rarity.toUpperCase()}</div>
+							</button>
+						{/each}
+					</div>
+				{/key}
 			</div>
 		</div>
 	{/if}
@@ -718,6 +727,7 @@
 
 	/* ── 상단 ── */
 	.hud-top {
+		position: relative;
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
@@ -772,21 +782,17 @@
 	.evo-hp-sep { color: rgba(180, 200, 220, 0.55); margin: 0 1px; font-weight: 600; }
 	.evo-hp-max { color: rgba(220, 235, 255, 0.88); }
 
-	/* 획득 카드: 5열 × 3행 고정 높이, 초과 시 세로 스크롤 */
+	/* 획득 카드: 7열 그리드, 넘치면 다음 행(세로 스크롤 없음) */
 	.picked-cards-grid {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
-		grid-auto-rows: minmax(36px, auto);
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		grid-auto-rows: minmax(34px, auto);
 		gap: 4px;
-		width: 198px;
+		width: min(100%, 278px);
 		flex-shrink: 0;
-		max-height: calc(3 * 36px + 2 * 4px);
-		overflow-x: hidden;
-		overflow-y: auto;
+		overflow: visible;
 		align-content: start;
 		padding: 2px 0;
-		scrollbar-width: thin;
-		scrollbar-color: rgba(0, 180, 255, 0.35) transparent;
 		box-sizing: border-box;
 	}
 	.card-chip {
@@ -815,10 +821,20 @@
 		font-size: 0.5rem;
 		letter-spacing: 0.02em;
 	}
+	/* 뷰포트 가로 정중앙 정렬 (좌·우 패널 너비와 무관) */
 	.center-panel {
-		display: flex; flex-direction: column; align-items: center;
+		position: absolute;
+		left: 50%;
+		top: 12px;
+		transform: translateX(-50%);
+		z-index: 2;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 		gap: 2px;
-		max-width: min(96vw, 360px);
+		width: max-content;
+		max-width: min(calc(100vw - 32px), 360px);
+		text-align: center;
 	}
 	.kill-stats {
 		margin-top: 6px;
@@ -863,14 +879,23 @@
 		font-weight: 800;
 	}
 	.time-display {
-		font-size: 2.2rem; font-weight: 900; letter-spacing: 0.12em;
+		font-size: 2.2rem;
+		font-weight: 900;
+		letter-spacing: 0.12em;
 		color: #ffffff;
 		text-shadow: 0 0 14px rgba(0,200,255,0.9), 0 0 28px rgba(0,120,255,0.5);
 		font-variant-numeric: tabular-nums;
+		text-align: center;
+		width: 100%;
 	}
 	.time-label {
-		font-size: 0.60rem; font-weight: 700; letter-spacing: 0.22em;
-		color: rgba(0,200,255,0.75); text-transform: uppercase;
+		font-size: 0.60rem;
+		font-weight: 700;
+		letter-spacing: 0.22em;
+		color: rgba(0,200,255,0.75);
+		text-transform: uppercase;
+		text-align: center;
+		width: 100%;
 	}
 	.time-elapsed-row {
 		display: flex;
@@ -1071,44 +1096,167 @@
 		text-shadow: 1px 1px 2px #000;
 	}
 	.card-row {
-		display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;
+		display: flex;
+		gap: 18px;
+		flex-wrap: wrap;
+		justify-content: center;
+		perspective: 1200px;
+		perspective-origin: 50% 35%;
 	}
 	.upgrade-card {
-		width: 230px; padding: 22px 16px;
-		display: flex; flex-direction: column; align-items: center; gap: 10px;
-		border-radius: 12px; cursor: pointer;
-		transition: transform 0.15s, box-shadow 0.15s;
-		color: #eee; text-align: center;
-		font-family: inherit;
+		position: relative;
+		width: 230px;
+		padding: 20px 14px 18px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		border-radius: 6px;
+		cursor: pointer;
+		color: #f2f4ff;
+		text-align: center;
+		font-family: 'Segoe UI', system-ui, sans-serif;
+		transform-style: preserve-3d;
+		backface-visibility: hidden;
+		border: none;
+		overflow: hidden;
+		animation: cardDealY 0.72s cubic-bezier(0.2, 0.85, 0.32, 1) both;
+		animation-delay: calc(var(--card-i, 0) * 0.12s);
+		transition: transform 0.18s ease-out, box-shadow 0.18s ease-out, filter 0.18s ease-out;
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px rgba(255, 210, 80, 0.5),
+			0 14px 32px rgba(0, 0, 0, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.18);
 	}
-	.upgrade-card:hover, .upgrade-card:focus {
-		transform: translateY(-6px) scale(1.03);
+	.upgrade-card::before {
+		content: '';
+		position: absolute;
+		inset: 8px;
+		border-radius: 3px;
+		border: 1px solid rgba(0, 0, 0, 0.45);
+		box-shadow:
+			inset 0 0 20px rgba(0, 0, 0, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		pointer-events: none;
+		z-index: 0;
+	}
+	.card-arcade-shine {
+		position: absolute;
+		top: 0;
+		left: 8%;
+		right: 8%;
+		height: 42%;
+		background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%);
+		border-radius: 4px 4px 50% 50%;
+		pointer-events: none;
+		z-index: 1;
+		opacity: 0.85;
+	}
+	.upgrade-card > :not(.card-arcade-shine) {
+		position: relative;
+		z-index: 2;
+	}
+	@keyframes cardDealY {
+		0% {
+			opacity: 0;
+			transform: rotateY(-92deg) translateZ(-55px) scale(0.86);
+			filter: brightness(1.35) saturate(1.1);
+		}
+		100% {
+			opacity: 1;
+			transform: rotateY(0deg) translateZ(0) scale(1);
+			filter: brightness(1) saturate(1);
+		}
+	}
+	.upgrade-card:hover,
+	.upgrade-card:focus {
+		transform: translateY(-8px) scale(1.045) rotateY(0deg);
 		outline: none;
+		filter: brightness(1.08);
 	}
 	.rarity-common {
-		background: linear-gradient(160deg, rgba(40,50,70,0.92), rgba(20,30,50,0.95));
-		border: 2px solid rgba(100,180,255,0.45);
-		box-shadow: 0 0 16px rgba(80,150,255,0.2);
+		background: linear-gradient(165deg, #3d4a66 0%, #1a2238 45%, #0d1428 100%);
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px rgba(120, 200, 255, 0.55),
+			0 14px 32px rgba(0, 60, 120, 0.45),
+			inset 0 1px 0 rgba(255, 255, 255, 0.15);
 	}
-	.rarity-common:hover  { box-shadow: 0 0 28px rgba(80,150,255,0.6); border-color: #88ccff; }
+	.rarity-common:hover {
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px #9cf,
+			0 18px 40px rgba(80, 160, 255, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.22);
+	}
 	.rarity-rare {
-		background: linear-gradient(160deg, rgba(50,30,80,0.92), rgba(25,10,55,0.95));
-		border: 2px solid rgba(180,100,255,0.55);
-		box-shadow: 0 0 20px rgba(150,80,255,0.25);
+		background: linear-gradient(165deg, #4a3080 0%, #241050 50%, #120828 100%);
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px rgba(200, 120, 255, 0.65),
+			0 14px 36px rgba(100, 40, 180, 0.5),
+			inset 0 1px 0 rgba(255, 255, 255, 0.14);
 	}
-	.rarity-rare:hover    { box-shadow: 0 0 32px rgba(180,80,255,0.7); border-color: #cc88ff; }
+	.rarity-rare:hover {
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px #daf,
+			0 20px 44px rgba(160, 80, 255, 0.65),
+			inset 0 1px 0 rgba(255, 255, 255, 0.2);
+	}
 	.rarity-epic {
-		background: linear-gradient(160deg, rgba(80,30,10,0.92), rgba(50,10,5,0.95));
-		border: 2px solid rgba(255,120,30,0.65);
-		box-shadow: 0 0 24px rgba(255,100,20,0.35);
+		background: linear-gradient(165deg, #6a3018 0%, #381008 48%, #180604 100%);
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px rgba(255, 140, 40, 0.75),
+			0 14px 36px rgba(120, 40, 0, 0.55),
+			inset 0 1px 0 rgba(255, 220, 160, 0.12);
 	}
-	.rarity-epic:hover    { box-shadow: 0 0 40px rgba(255,120,20,0.8); border-color: #ff9944; }
+	.rarity-epic:hover {
+		box-shadow:
+			0 0 0 2px rgba(10, 12, 20, 0.95),
+			0 0 0 4px #fc6,
+			0 22px 48px rgba(255, 100, 20, 0.65),
+			inset 0 1px 0 rgba(255, 240, 200, 0.18);
+	}
 
-	.card-num    { font-size: 0.72rem; color: #888; font-weight: 700; letter-spacing: 0.1em; }
-	.card-emoji  { font-size: 2.2rem; }
-	.card-name   { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.06em; }
-	.card-desc   { font-size: 0.82rem; color: #ccc; line-height: 1.4; }
-	.card-rarity-tag { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.15em; opacity: 0.6; }
+	.card-num {
+		font-size: 0.68rem;
+		color: rgba(255, 255, 255, 0.45);
+		font-weight: 900;
+		letter-spacing: 0.14em;
+		text-shadow: 0 1px 2px #000;
+	}
+	.card-emoji {
+		font-size: 2.35rem;
+		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+	}
+	.card-name {
+		font-size: 1.08rem;
+		font-weight: 900;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		font-family: 'Arial Black', 'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+		text-shadow: 0 0 12px rgba(255, 255, 255, 0.25), 0 2px 4px #000;
+	}
+	.card-desc {
+		font-size: 0.78rem;
+		color: rgba(230, 235, 255, 0.88);
+		line-height: 1.38;
+		text-shadow: 0 1px 2px #000;
+	}
+	.card-rarity-tag {
+		font-size: 0.62rem;
+		font-weight: 900;
+		letter-spacing: 0.22em;
+		color: rgba(255, 255, 255, 0.55);
+		padding: 4px 10px;
+		border: 1px solid rgba(255, 255, 255, 0.22);
+		border-radius: 2px;
+		background: rgba(0, 0, 0, 0.35);
+		text-shadow: 0 1px 2px #000;
+	}
 
 	/* ── BOSS 배너 (뷰포트 높이 상단 1/3 구간의 중앙 ≈ top 16.67%) ── */
 	.boss-banner {
