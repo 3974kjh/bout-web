@@ -1,12 +1,12 @@
-/** 페이지별 대기 BGM — `static/bgms/pages/` */
+/** 페이지별 대기 BGM — `static/bgms/pages/` (AAC `.m4a`, 짧은 루프 + 저용량) */
 
 import { browser } from '$app/environment';
 import { audioSettings, effectiveBgmVolume } from '$lib/stores/audioSettings';
 
 export const BGM = {
-	main: '/bgms/pages/main_bgm.wav',
-	sub: '/bgms/pages/sub_bgm.wav',
-	game: '/bgms/pages/game_bgm.wav'
+	main: '/bgms/pages/main_bgm.m4a',
+	sub: '/bgms/pages/sub_bgm.m4a',
+	game: '/bgms/pages/game_bgm.m4a'
 } as const;
 
 const SESSION_UNLOCK_KEY = 'bout-bgm-unlocked';
