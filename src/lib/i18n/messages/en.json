@@ -6,6 +6,20 @@
 		"backHomeTitle": "Home",
 		"language": "Language"
 	},
+	"auth": {
+		"title": "Sign in",
+		"lead": "Continue with Google or GitHub (Supabase Auth · OAuth 2.0).",
+		"google": "Continue with Google",
+		"github": "Continue with GitHub",
+		"signOut": "Sign out",
+		"loginLink": "Sign in",
+		"notConfigured": "PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY are not set. Check your .env file.",
+		"errorOauth": "Provider sign-in was denied or cancelled.",
+		"errorExchange": "Could not create a session. Please try again.",
+		"errorConfig": "Supabase is not configured on the server.",
+		"hintSupabase": "In the dashboard, enable Google/GitHub under Authentication → Providers and add this site’s /auth/callback to Redirect URLs.",
+		"backHome": "← Home"
+	},
 	"lang": {
 		"ko": "한국어",
 		"en": "English"

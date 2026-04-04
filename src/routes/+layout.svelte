@@ -4,6 +4,7 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
 	import LanguageSwitcher from '$lib/components/LanguageSwitcher.svelte';
+	import AuthBar from '$lib/components/AuthBar.svelte';
 	import { locale } from '$lib/i18n/locale';
 	import {
 		bumpRouteBgmAfterNavigation,
@@ -62,6 +63,9 @@
 	});
 </script>
 
+{#if !page.url.pathname.startsWith('/game') && !page.url.pathname.startsWith('/login')}
+	<AuthBar />
+{/if}
 {#if !page.url.pathname.startsWith('/game')}
 	<LanguageSwitcher />
 {/if}
