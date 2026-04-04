@@ -112,6 +112,8 @@ export class GameEngine {
 	private perfSampling = false;
 	private perfFrameCounter = 0;
 	private perfDtAccum = 0;
+	/** 3단계: 레벨업/ESC 일시정지 중 격프레임 렌더로 GPU 부하 완화 */
+	private renderSeq = 0;
 
 	// 보스 AOE: 고정 외곽 링 + 중심에서 바깥으로 채워지는 원, 타격 시 보스별 연출
 	private aoeEffects: Array<{
@@ -325,6 +327,7 @@ export class GameEngine {
 		this.animId = requestAnimationFrame(this.animate);
 		try {
 			const dt = Math.min(this.clock.getDelta(), 0.05);
+			this.renderSeq++;
 
 			if (!this.isGameOver && !this.isLevelUpPaused && !this.isEscapePaused) {
 				this.simFrame++;
@@ -369,10 +372,14 @@ export class GameEngine {
 
 			this.camCtrl.update(dt, this.player.group.position);
 			this.syncBackgroundQuadsToCamera();
-			try {
-				this.renderer.render(this.scene, this.camera);
-			} catch {
-				/* WebGL 컨텍스트 손실 등 */
+			const uiPaused = this.isLevelUpPaused || this.isEscapePaused;
+			const skipRenderForPause = uiPaused && (this.renderSeq & 1) === 1;
+			if (!skipRenderForPause) {
+				try {
+					this.renderer.render(this.scene, this.camera);
+				} catch {
+					/* WebGL 컨텍스트 손실 등 */
+				}
 			}
 			if (this.perfSampling) {
 				this.perfDtAccum += dt;
@@ -1888,6 +1895,11 @@ export class GameEngine {
 		}
 		this.scene.background = null;
 		this.renderer.dispose();
+		try {
+			this.renderer.forceContextLoss();
+		} catch {
+			/* WEBGL_lose_context 미지원 등 */
+		}
 		if (this.renderer.domElement.parentElement) {
 			this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
 		}

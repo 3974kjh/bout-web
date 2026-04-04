@@ -456,9 +456,7 @@ export class TrainingPlanet implements StageQuery {
 		const bz = this.bounds.minZ;
 		const bZ = this.bounds.maxZ;
 
-		// 드럼통 클러스터
-		const drumMat = new THREE.MeshStandardMaterial({ color: 0x1a2a18, roughness: 0.72, metalness: 0.55 });
-		const drumBandMat = new THREE.MeshStandardMaterial({ color: 0x886600, roughness: 0.5, metalness: 0.65 });
+		// 드럼통 클러스터 — InstancedMesh 2개 (14×2 메쉬 → 드로우 2회)
 		const drumHalf = 0.35;
 		const drumPos: [number, number][] = [
 			[-60, 15], [60, -15], [-30, 60], [30, -60],
@@ -466,46 +464,83 @@ export class TrainingPlanet implements StageQuery {
 			[0, -70], [0, 70], [-90, 0], [90, 0],
 			[22, 48], [-22, -48], [48, -22], [-48, 22],
 		];
-		for (const [dx0, dz0] of drumPos) {
+		const nDrum = drumPos.length;
+		const drumGeo = new THREE.CylinderGeometry(0.3, 0.32, 0.9, 8);
+		const bandGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.1, 8);
+		const drumMat = new THREE.MeshStandardMaterial({ color: 0x1a2a18, roughness: 0.72, metalness: 0.55 });
+		const drumBandMat = new THREE.MeshStandardMaterial({ color: 0x886600, roughness: 0.5, metalness: 0.65 });
+		const drumBodies = new THREE.InstancedMesh(drumGeo, drumMat, nDrum);
+		const drumBands = new THREE.InstancedMesh(bandGeo, drumBandMat, nDrum);
+		drumBodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		drumBands.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		const dM = new THREE.Matrix4();
+		const dPos = new THREE.Vector3();
+		const dQuat = new THREE.Quaternion();
+		const dScale = new THREE.Vector3(1, 1, 1);
+		for (let i = 0; i < nDrum; i++) {
+			const [dx0, dz0] = drumPos[i]!;
 			const { x: dx, z: dz } = clampAabbCenterXZ(dx0, dz0, drumHalf, drumHalf, bx, bX, bz, bZ);
-			const d = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.32, 0.9, 8), drumMat.clone());
-			d.position.set(dx, 0.45, dz);
-			d.castShadow = true;
-			d.receiveShadow = true;
-			scene.add(d);
-			const b = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.1, 8), drumBandMat.clone());
-			b.position.set(dx, 0.55, dz);
-			b.castShadow = true;
-			b.receiveShadow = true;
-			scene.add(b);
-			this.propTopHighlightMats.push(b.material as THREE.MeshStandardMaterial);
+			dPos.set(dx, 0.45, dz);
+			dM.compose(dPos, dQuat, dScale);
+			drumBodies.setMatrixAt(i, dM);
+			dPos.set(dx, 0.55, dz);
+			dM.compose(dPos, dQuat, dScale);
+			drumBands.setMatrixAt(i, dM);
 		}
+		drumBodies.instanceMatrix.needsUpdate = true;
+		drumBands.instanceMatrix.needsUpdate = true;
+		drumBodies.castShadow = true;
+		drumBodies.receiveShadow = true;
+		drumBands.castShadow = true;
+		drumBands.receiveShadow = true;
+		scene.add(drumBodies, drumBands);
+		this.propTopHighlightMats.push(drumBandMat);
 
-		// 수직 파이프 (시각적 배경)
+		// 수직 파이프 + 상단 링 — InstancedMesh 2개 (12×2 메쉬 → 드로우 2회)
 		const pipeMat = new THREE.MeshStandardMaterial({ color: 0x222232, roughness: 0.7, metalness: 0.6 });
 		const pipeR = 0.45;
 		const pipePos: [number, number, number][] = [
 			[-72, 6, -72], [72, 6, -72], [-72, 6, 72], [72, 6, 72],
-			[-72, 5, 0],   [72, 5, 0],  [0, 5, -72],  [0, 5, 72],
+			[-72, 5, 0], [72, 5, 0], [0, 5, -72], [0, 5, 72],
 			[-20, 7, -95], [20, 7, -95], [-20, 7, 95], [20, 7, 95],
 		];
-		for (const [px0, ph, pz0] of pipePos) {
+		const nPipe = pipePos.length;
+		const pipeGeo = new THREE.CylinderGeometry(0.45, 0.45, 1, 8);
+		const ringGeo = new THREE.TorusGeometry(0.5, 0.07, 6, 12);
+		const ringMat = new THREE.MeshStandardMaterial({
+			color: 0x00ccff,
+			emissive: new THREE.Color(0x0066aa),
+			emissiveIntensity: 1.2
+		});
+		const pipes = new THREE.InstancedMesh(pipeGeo, pipeMat, nPipe);
+		const pipeRings = new THREE.InstancedMesh(ringGeo, ringMat, nPipe);
+		pipes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		pipeRings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		const pM = new THREE.Matrix4();
+		const pPos = new THREE.Vector3();
+		const pQuatId = new THREE.Quaternion();
+		const pScale = new THREE.Vector3();
+		const ringQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+		for (let i = 0; i < nPipe; i++) {
+			const [px0, ph, pz0] = pipePos[i]!;
 			const { x: px, z: pz } = clampAabbCenterXZ(px0, pz0, pipeR, pipeR, bx, bX, bz, bZ);
-			const p = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, ph, 8), pipeMat.clone());
-			p.position.set(px, ph / 2, pz);
-			p.castShadow = true;
-			p.receiveShadow = true;
-			scene.add(p);
-			// 파이프 상단 발광 링
-			const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 12),
-				new THREE.MeshStandardMaterial({ color: 0x00ccff, emissive: new THREE.Color(0x0066aa), emissiveIntensity: 1.2 }));
-			ring.rotation.x = Math.PI / 2;
-			ring.position.set(px, ph + 0.05, pz);
-			ring.castShadow = true;
-			ring.receiveShadow = true;
-			scene.add(ring);
-			this.glowMeshes.push(ring as unknown as THREE.Mesh);
+			pPos.set(px, ph * 0.5, pz);
+			pScale.set(1, ph, 1);
+			pM.compose(pPos, pQuatId, pScale);
+			pipes.setMatrixAt(i, pM);
+			pPos.set(px, ph + 0.05, pz);
+			pScale.set(1, 1, 1);
+			pM.compose(pPos, ringQuat, pScale);
+			pipeRings.setMatrixAt(i, pM);
 		}
+		pipes.instanceMatrix.needsUpdate = true;
+		pipeRings.instanceMatrix.needsUpdate = true;
+		pipes.castShadow = true;
+		pipes.receiveShadow = true;
+		pipeRings.castShadow = true;
+		pipeRings.receiveShadow = true;
+		scene.add(pipes, pipeRings);
+		this.glowMeshes.push(pipeRings as unknown as THREE.Mesh);
 
 		// 캣워크 수평 빔 (여러 위치 연결되는 가교 느낌, 시각적 전용)
 		const beamMat = new THREE.MeshStandardMaterial({ color: 0x181818, roughness: 0.6, metalness: 0.8 });
