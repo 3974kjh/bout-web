@@ -5,6 +5,28 @@ import type { MonsterAIState, MonsterConfig, StageQuery } from '$lib/domain/type
 import { GRAVITY, KNOCKDOWN_THRESHOLD, KNOCKDOWN_MS } from '../constants/GameConfig';
 import { EventBus } from '../bridge/EventBus';
 
+function disposeMaterialTextures(m: THREE.Material): void {
+	const rec = m as unknown as Record<string, unknown>;
+	for (const key of [
+		'map',
+		'emissiveMap',
+		'normalMap',
+		'roughnessMap',
+		'metalnessMap',
+		'aoMap',
+		'lightMap',
+		'bumpMap',
+		'alphaMap',
+		'envMap',
+		'specularMap',
+		'gradientMap'
+	]) {
+		const v = rec[key];
+		if (v && typeof (v as THREE.Texture).dispose === 'function') (v as THREE.Texture).dispose();
+	}
+	m.dispose();
+}
+
 export class Monster {
 	group: THREE.Group;
 	parts: MechParts3D;
@@ -630,5 +652,18 @@ export class Monster {
 
 	dispose(scene: THREE.Scene): void {
 		scene.remove(this.group);
+		this.group.traverse((obj) => {
+			if (obj instanceof THREE.Mesh) {
+				obj.geometry?.dispose();
+				const mat = obj.material;
+				if (Array.isArray(mat)) mat.forEach(disposeMaterialTextures);
+				else if (mat) disposeMaterialTextures(mat);
+			}
+			if (obj instanceof THREE.Sprite) {
+				const sm = obj.material as THREE.SpriteMaterial;
+				if (sm.map) sm.map.dispose();
+				sm.dispose();
+			}
+		});
 	}
 }

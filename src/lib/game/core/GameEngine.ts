@@ -179,7 +179,11 @@ export class GameEngine {
 		this.container = container;
 		this.onFirstFrameRendered = options?.onFirstFrameRendered;
 
-		this.renderer = new THREE.WebGLRenderer({ antialias: true });
+		this.renderer = new THREE.WebGLRenderer({
+			antialias: true,
+			powerPreference: 'high-performance'
+		});
+		/** 레티나 과부하 방지 — 필요 시 품질 프리셋에서 상한 조정 */
 		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		this.renderer.setSize(container.clientWidth, container.clientHeight);
 		this.renderer.shadowMap.enabled = true;
@@ -222,7 +226,8 @@ export class GameEngine {
 		const dir = new THREE.DirectionalLight(0xffffff, 2.2);
 		dir.position.set(15, 30, 15);
 		dir.castShadow = true;
-		dir.shadow.mapSize.set(2048, 2048);
+		/** 2048 대비 GPU 부하 완화 — 실루엣 품질과 트레이드오프 */
+		dir.shadow.mapSize.set(1024, 1024);
 		const sc = dir.shadow.camera;
 		sc.left = -95;
 		sc.right = 95;

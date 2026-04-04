@@ -4,6 +4,14 @@ import {
 	PLAYER_MISSILE_FRAME_COUNT,
 	setMissileSpriteFrame
 } from './playerMissileSheet';
+import {
+	acquireEnemyProjectileMaterial,
+	acquirePlayerMeshProjectileMaterial,
+	releaseEnemyProjectileMaterial,
+	releasePlayerMeshProjectileMaterial,
+	SHARED_ENEMY_SPHERE,
+	SHARED_PLAYER_MISSILE_CYL
+} from './projectileShared';
 
 export class Projectile {
 	/** Mesh 또는 스프라이트 십자( Group ) */
@@ -26,6 +34,8 @@ export class Projectile {
 	private useSpriteMissile = false;
 	private missileMap: THREE.Texture | null = null;
 	private animTime = 0;
+	/** 메쉬 플레이어 탄 — 공유 머티리얼 해제용 */
+	private meshPlayerColor: number | null = null;
 
 	constructor(
 		scene: THREE.Scene,
@@ -78,24 +88,19 @@ export class Projectile {
 			planeB.renderOrder = 2;
 			cross.add(planeA, planeB);
 			this.mesh = cross;
+		} else if (isPlayer) {
+			this.meshPlayerColor = color;
+			const mat = acquirePlayerMeshProjectileMaterial(color);
+			this.mesh = new THREE.Mesh(SHARED_PLAYER_MISSILE_CYL, mat);
+			this.mesh.scale.setScalar(scale);
+			const dir = direction.clone().normalize();
+			const axis = new THREE.Vector3(0, 1, 0);
+			const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, dir);
+			this.mesh.quaternion.copy(quaternion);
 		} else {
-			const geo = isPlayer
-				? new THREE.CylinderGeometry(0.08 * scale, 0.13 * scale, 0.65 * scale, 6)
-				: new THREE.SphereGeometry(0.18 * scale, 8, 6);
-			const mat = new THREE.MeshStandardMaterial({
-				color,
-				emissive: new THREE.Color(color),
-				emissiveIntensity: isPlayer ? 2.8 : 1.5,
-				roughness: 0.12,
-				metalness: 0.6
-			});
-			this.mesh = new THREE.Mesh(geo, mat);
-			if (isPlayer) {
-				const dir = direction.clone().normalize();
-				const axis = new THREE.Vector3(0, 1, 0);
-				const quaternion = new THREE.Quaternion().setFromUnitVectors(axis, dir);
-				this.mesh.quaternion.copy(quaternion);
-			}
+			const mat = acquireEnemyProjectileMaterial();
+			this.mesh = new THREE.Mesh(SHARED_ENEMY_SPHERE, mat);
+			this.mesh.scale.setScalar(0.18 * scale);
 		}
 
 		this.mesh.position.copy(pos);
@@ -147,11 +152,12 @@ export class Projectile {
 				mat.dispose();
 			}
 		} else {
-			const m = this.mesh as THREE.Mesh;
-			const mat = m.material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
-			if (mat instanceof THREE.MeshBasicMaterial) mat.map = null;
-			mat.dispose();
-			m.geometry.dispose();
+			if (this.isPlayer && this.meshPlayerColor !== null) {
+				releasePlayerMeshProjectileMaterial(this.meshPlayerColor);
+			} else if (!this.isPlayer) {
+				releaseEnemyProjectileMaterial();
+			}
+			/* SHARED_ENEMY_SPHERE / SHARED_PLAYER_MISSILE_CYL — 모듈 공유, dispose 금지 */
 		}
 	}
 }
