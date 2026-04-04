@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goHomeOnEscape } from '$lib/navigation/goHomeOnEscape';
 	import { getBrowserSupabase } from '$lib/supabase/browser';
 	import { locale, translate as tr } from '$lib/i18n';
 
@@ -24,6 +25,8 @@
 		}
 	}
 </script>
+
+<svelte:window onkeydown={goHomeOnEscape} />
 
 <main class="auth-page">
 	<div class="auth-card">

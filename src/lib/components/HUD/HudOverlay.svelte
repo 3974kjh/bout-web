@@ -10,7 +10,7 @@
 	} from '$lib/game/systems/UpgradeSystem';
 	import { computeRunScore, VICTORY_SURVIVAL_SECONDS } from '$lib/game/constants/GameConfig';
 	import { getShopSettingsForGame, refreshShopSettingsForGame } from '$lib/game/shopGameCache';
-	import { appendRankRunRecord } from '$lib/storage/rankIndexedDb';
+	import { appendRankRunRecordForUser } from '$lib/storage/userGameStorage';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
 	import HudEvoMiniPreview from '$lib/components/HUD/HudEvoMiniPreview.svelte';
 	import { locale, translate as tr, numberLocaleTag } from '$lib/i18n';
@@ -393,7 +393,7 @@
 			scoreTime: sc.partTime,
 			waveBossCount: d?.bossCount ?? 0
 		};
-		void appendRankRunRecord({
+		void appendRankRunRecordForUser({
 			mechBase: coerceMechBase(d?.mechBase),
 			scoreTotal: sc.total,
 			scoreBoss: sc.partBoss,

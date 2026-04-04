@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import type { MechBase } from '$lib/domain/types';
 	import {
@@ -13,10 +13,8 @@
 	import ShopMechPreview from '$lib/components/shop/ShopMechPreview.svelte';
 	import ShopEvolutionGuide from '$lib/components/shop/ShopEvolutionGuide.svelte';
 	import { getAllCardsCatalog } from '$lib/game/systems/UpgradeSystem';
-	import {
-		readShopSettingsFromIndexedDb,
-		writeShopSettingsToIndexedDb
-	} from '$lib/storage/shopIndexedDb';
+	import { goHomeOnEscape } from '$lib/navigation/goHomeOnEscape';
+	import { readShopSettingsForUser, writeShopSettingsForUser } from '$lib/storage/userGameStorage';
 	import { locale, translate as tr, mechShopLine, missileSkinLabel } from '$lib/i18n';
 
 	const catalog = getAllCardsCatalog();
@@ -34,10 +32,13 @@
 	let loadError = $state<string | null>(null);
 	let ready = $state(false);
 
-	onMount(() => {
+	$effect(() => {
+		void page.data.user?.id;
 		void (async () => {
 			try {
-				settings = await readShopSettingsFromIndexedDb();
+				ready = false;
+				loadError = null;
+				settings = await readShopSettingsForUser();
 			} catch (e) {
 				loadError = e instanceof Error ? e.message : tr(get(locale), 'shop.loadFailed');
 				settings = { ...DEFAULT_SHOP_SETTINGS };
@@ -50,7 +51,7 @@
 	async function persist(next: ShopSettings): Promise<void> {
 		settings = next;
 		try {
-			await writeShopSettingsToIndexedDb(next);
+			await writeShopSettingsForUser(next);
 		} catch (e) {
 			loadError = e instanceof Error ? e.message : tr(get(locale), 'shop.saveFailed');
 		}
@@ -76,6 +77,8 @@
 	}
 
 </script>
+
+<svelte:window onkeydown={goHomeOnEscape} />
 
 <div class="shop-fill">
 	<BackToHomeButton />

@@ -43,7 +43,7 @@ function openDb(): Promise<IDBDatabase> {
 	});
 }
 
-function normalizeMech(m: unknown): MechBase {
+export function normalizeMechBase(m: unknown): MechBase {
 	if (typeof m === 'string' && MECH_SET.has(m as MechBase)) return m as MechBase;
 	return 'hypersuit';
 }
@@ -56,7 +56,7 @@ function normalizeEntry(raw: unknown): RankRunRecord | null {
 	return {
 		id,
 		playedAt: typeof o.playedAt === 'number' ? o.playedAt : 0,
-		mechBase: normalizeMech(o.mechBase),
+		mechBase: normalizeMechBase(o.mechBase),
 		scoreTotal: typeof o.scoreTotal === 'number' ? o.scoreTotal : 0,
 		scoreBoss: typeof o.scoreBoss === 'number' ? o.scoreBoss : 0,
 		scoreLevel: typeof o.scoreLevel === 'number' ? o.scoreLevel : 0,
@@ -105,7 +105,8 @@ export async function readRankRecords(): Promise<RankRunRecord[]> {
 	return parseStored(row);
 }
 
-const MAX_RECORDS = 2000;
+/** 기기 로컬에 보관하는 랭크 최대 개수(총점 상위 기준, DB 유저당 10건과 맞춤) */
+const MAX_RECORDS = 10;
 
 function parseStored(row: unknown): RankRunRecord[] {
 	if (row === undefined) return [];
@@ -122,15 +123,9 @@ function parseStored(row: unknown): RankRunRecord[] {
 	return [];
 }
 
-export async function appendRankRunRecord(
-	partial: Omit<RankRunRecord, 'id' | 'playedAt'>
-): Promise<void> {
+/** 클라우드·로컬 동기화용 — 이미 id·playedAt이 정해진 레코드를 병합 저장 */
+export async function appendRankRunRecordToIndexedDb(rec: RankRunRecord): Promise<void> {
 	if (typeof indexedDB === 'undefined') return;
-	const rec: RankRunRecord = {
-		id: crypto.randomUUID(),
-		playedAt: Date.now(),
-		...partial
-	};
 	const db = await openDb();
 	try {
 		const row = await readRaw(db);
@@ -142,4 +137,36 @@ export async function appendRankRunRecord(
 	} finally {
 		db.close();
 	}
+}
+
+/** Supabase 등에서 받은 목록으로 IDB 전체를 덮어씀 (캐시) */
+export async function replaceRankRecordsInIndexedDb(records: RankRunRecord[]): Promise<void> {
+	if (typeof indexedDB === 'undefined') return;
+	const seen = new Set<string>();
+	const deduped: RankRunRecord[] = [];
+	for (const r of records) {
+		const n = normalizeEntry(r);
+		if (!n || seen.has(n.id)) continue;
+		seen.add(n.id);
+		deduped.push(n);
+	}
+	deduped.sort(sortRecords);
+	const list = deduped.length > MAX_RECORDS ? deduped.slice(0, MAX_RECORDS) : deduped;
+	const db = await openDb();
+	try {
+		await writeRaw(db, { version: 1, entries: list });
+	} finally {
+		db.close();
+	}
+}
+
+export async function appendRankRunRecord(
+	partial: Omit<RankRunRecord, 'id' | 'playedAt'>
+): Promise<void> {
+	const rec: RankRunRecord = {
+		id: crypto.randomUUID(),
+		playedAt: Date.now(),
+		...partial
+	};
+	await appendRankRunRecordToIndexedDb(rec);
 }
