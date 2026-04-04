@@ -2,6 +2,10 @@
 // for information about these interfaces
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 
+interface ImportMetaEnv {
+	readonly PUBLIC_SITE_URL?: string;
+}
+
 declare global {
 	namespace App {
 		// interface Error {}
