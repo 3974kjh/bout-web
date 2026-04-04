@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
 	import { locale, translate as tr } from '$lib/i18n';
@@ -91,6 +92,34 @@
 					</span>
 					<span class="btn-rank-hint">{tr($locale, 'home.rankHint')}</span>
 				</button>
+				{#if page.data.user}
+					<div class="home-auth home-auth--in">
+						<span class="home-auth__email" title={page.data.user.email ?? ''}>
+							{page.data.user.email ?? page.data.user.id}
+						</span>
+						<form method="POST" action="/auth/signout" class="home-auth__form">
+							<button type="submit" class="home-auth__out">{tr($locale, 'auth.signOut')}</button>
+						</form>
+					</div>
+				{:else}
+					<a href="/login" class="btn-login">
+						<span class="btn-login-row">
+							<svg class="btn-login-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+								<path
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.65"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M15 7a4 4 0 1 0-8 0v2m-2 4h12v8H5v-8z"
+								/>
+								<circle cx="12" cy="15" r="1.35" fill="currentColor" opacity="0.9" />
+							</svg>
+							<span class="btn-login-label">{tr($locale, 'auth.loginLink')}</span>
+						</span>
+						<span class="btn-login-hint">{tr($locale, 'home.loginHint')}</span>
+					</a>
+				{/if}
 			</div>
 		</div>
 
@@ -595,6 +624,122 @@
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		color: rgba(220, 180, 120, 0.65);
+	}
+
+	.btn-login {
+		position: relative;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 0.78rem 1rem;
+		border-radius: 4px;
+		border: none;
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3rem;
+		color: #d8ccff;
+		font-size: 0.82rem;
+		font-weight: 800;
+		letter-spacing: 0.14em;
+		text-decoration: none;
+		background: linear-gradient(180deg, rgba(36, 28, 56, 0.82), rgba(14, 10, 28, 0.94));
+		box-shadow:
+			inset 0 0 0 1px rgba(160, 120, 255, 0.38),
+			inset 0 1px 0 rgba(255, 255, 255, 0.06),
+			0 4px 14px rgba(0, 0, 0, 0.35);
+		clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+		transition:
+			box-shadow 0.16s ease,
+			color 0.16s ease,
+			transform 0.16s ease;
+	}
+	.btn-login:hover {
+		color: #f0e8ff;
+		box-shadow:
+			inset 0 0 0 1px rgba(200, 160, 255, 0.55),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1),
+			0 0 20px rgba(120, 80, 200, 0.22),
+			0 6px 18px rgba(0, 0, 0, 0.4);
+		transform: translateY(-1px);
+	}
+	.btn-login-row {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+	.btn-login-icon {
+		width: 1.35rem;
+		height: 1.35rem;
+		flex-shrink: 0;
+		opacity: 0.95;
+		filter: drop-shadow(0 0 6px rgba(160, 120, 255, 0.45));
+	}
+	.btn-login-label {
+		font-size: 0.84rem;
+		font-weight: 900;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		text-shadow: 0 0 10px rgba(20, 10, 40, 0.5);
+	}
+	.btn-login-hint {
+		font-size: 0.58rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: rgba(180, 160, 220, 0.7);
+	}
+
+	.home-auth {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 0.72rem 1rem;
+		border-radius: 4px;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem 0.75rem;
+		background: linear-gradient(180deg, rgba(28, 22, 44, 0.75), rgba(12, 8, 22, 0.9));
+		box-shadow:
+			inset 0 0 0 1px rgba(140, 110, 200, 0.32),
+			inset 0 1px 0 rgba(255, 255, 255, 0.05),
+			0 4px 12px rgba(0, 0, 0, 0.3);
+		clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+	}
+	.home-auth__email {
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		color: rgba(210, 195, 245, 0.92);
+	}
+	.home-auth__form {
+		margin: 0;
+	}
+	.home-auth__out {
+		padding: 0.35rem 0.75rem;
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: rgba(220, 200, 255, 0.95);
+		background: rgba(40, 24, 64, 0.55);
+		border: 1px solid rgba(160, 120, 220, 0.4);
+		border-radius: 4px;
+		cursor: pointer;
+		transition:
+			background 0.15s ease,
+			border-color 0.15s ease,
+			box-shadow 0.15s ease;
+	}
+	.home-auth__out:hover {
+		background: rgba(56, 36, 88, 0.65);
+		border-color: rgba(190, 150, 255, 0.55);
+		box-shadow: 0 0 14px rgba(120, 80, 180, 0.25);
 	}
 
 	.cta::before {
