@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolveOAuthRedirectOrigin } from '$lib/auth/oauthRedirectOrigin';
 	import { goHomeOnEscape } from '$lib/navigation/goHomeOnEscape';
 	import { getBrowserSupabase } from '$lib/supabase/browser';
 	import { locale, translate as tr } from '$lib/i18n';
@@ -9,10 +10,11 @@
 	async function signIn(provider: 'google' | 'github'): Promise<void> {
 		const supabase = getBrowserSupabase();
 		if (!supabase) return;
+		const origin = resolveOAuthRedirectOrigin(window.location.origin);
 		const { data, error } = await supabase.auth.signInWithOAuth({
 			provider,
 			options: {
-				redirectTo: `${page.url.origin}/auth/callback`,
+				redirectTo: `${origin}/auth/callback`,
 				skipBrowserRedirect: true
 			}
 		});
