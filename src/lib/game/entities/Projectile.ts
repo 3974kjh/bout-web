@@ -108,6 +108,39 @@ export class Projectile {
 		scene.add(this.mesh);
 	}
 
+	/** 풀 재사용 — 적 구체 탄만 (공유 지오/머티리얼 유지, dispose 호출 안 함) */
+	resetEnemy(
+		scene: THREE.Scene,
+		pos: THREE.Vector3,
+		dir: THREE.Vector3,
+		speed: number,
+		damage: number,
+		scale = 1
+	): void {
+		this.damage = damage;
+		this.isPlayer = false;
+		this.pierceLeft = 0;
+		this.homingTarget = null;
+		this.velocity.copy(dir.clone().normalize().multiplyScalar(speed));
+		this.alive = true;
+		this.life = 0;
+		this.hitIds.clear();
+		this.useSpriteMissile = false;
+		this.meshPlayerColor = null;
+		this.animTime = 0;
+		const m = this.mesh as THREE.Mesh;
+		m.position.copy(pos);
+		m.scale.setScalar(0.18 * scale);
+		m.quaternion.identity();
+		if (!this.mesh.parent) scene.add(this.mesh);
+	}
+
+	recycleEnemy(scene: THREE.Scene): void {
+		scene.remove(this.mesh);
+		this.alive = false;
+		this.hitIds.clear();
+	}
+
 	update(dt: number): void {
 		this.life += dt * 1000;
 

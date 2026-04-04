@@ -1,9 +1,16 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { browser } from '$app/environment';
 	import HudOverlay from '$lib/components/HUD/HudOverlay.svelte';
 	import { EventBus } from '$lib/game/bridge/EventBus';
 	import { warmupSfx } from '$lib/audio/sfx';
 	import { locale, translate as tr } from '$lib/i18n';
+	import {
+		perfOverlayEnabled,
+		perfSnapshot,
+		readPerfFromUrl,
+		resetPerfSnapshot
+	} from '$lib/game/debug/perfStats';
 
 	let gameContainer: HTMLDivElement | undefined = $state();
 	let engine: { destroy: () => void } | null = $state(null);
@@ -19,6 +26,9 @@
 	}
 
 	onMount(async () => {
+		if (browser && readPerfFromUrl()) {
+			perfOverlayEnabled.set(true);
+		}
 		await tick();
 		if (!gameContainer) {
 			bootLoading = false;
@@ -59,6 +69,8 @@
 		clearBootFailSafe();
 		engine?.destroy();
 		EventBus.removeAll();
+		perfOverlayEnabled.set(false);
+		resetPerfSnapshot();
 	});
 
 </script>
@@ -67,6 +79,25 @@
 	<div class="game-wrapper">
 		<div bind:this={gameContainer} class="game-canvas"></div>
 		<HudOverlay />
+		{#if $perfOverlayEnabled}
+			<div class="game-perf-overlay" aria-hidden="true">
+				<div class="game-perf-overlay__title">perf (?perf=1)</div>
+				<div>FPS {$perfSnapshot.fps.toFixed(0)} · {$perfSnapshot.msFrame.toFixed(2)} ms/f</div>
+				<div>
+					draw {$perfSnapshot.drawCalls} · tri {$perfSnapshot.triangles.toLocaleString()} · pt
+					{$perfSnapshot.points} · ln {$perfSnapshot.lines}
+				</div>
+				<div>
+					mobs {$perfSnapshot.aliveMonsters} · proj E {$perfSnapshot.enemyProjectiles} / P
+					{$perfSnapshot.playerProjectiles}
+				</div>
+				{#if $perfSnapshot.jsHeapUsedMb != null}
+					<div>
+						JS heap {$perfSnapshot.jsHeapUsedMb.toFixed(1)} / {$perfSnapshot.jsHeapTotalMb?.toFixed(1)} MB
+					</div>
+				{/if}
+			</div>
+		{/if}
 		{#if bootLoading}
 			<div
 				class="game-boot-overlay"
@@ -106,6 +137,29 @@
 	.game-canvas {
 		width: 100%;
 		height: 100%;
+	}
+	.game-perf-overlay {
+		position: absolute;
+		top: 0.5rem;
+		left: 0.5rem;
+		z-index: 200;
+		padding: 0.45rem 0.55rem;
+		max-width: min(96vw, 22rem);
+		font-family: ui-monospace, monospace;
+		font-size: 0.65rem;
+		line-height: 1.45;
+		color: rgba(200, 240, 255, 0.95);
+		background: rgba(6, 8, 18, 0.82);
+		border: 1px solid rgba(0, 200, 255, 0.28);
+		border-radius: 6px;
+		pointer-events: none;
+		text-align: left;
+	}
+	.game-perf-overlay__title {
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		margin-bottom: 0.2rem;
+		color: rgba(120, 220, 255, 0.95);
 	}
 	.game-boot-overlay {
 		position: absolute;

@@ -59,6 +59,10 @@ export class Monster {
 	/** 링 기본 로컬 Y (발밑 기준) — surface 보정은 매 프레임 더함 */
 	private dangerRingBaseY = 0;
 
+	/** 원거리 시 단순 박스 1드로우로 대체 (비보스) — 2단계 시각 LOD */
+	private lodImpostor!: THREE.Mesh;
+	private lodFar = false;
+
 	// 끼임 탈출 로직
 	private stuckPos    = new THREE.Vector3();
 	private stuckTimer  = 0;   // 체크 간격 (ms)
@@ -128,6 +132,34 @@ export class Monster {
 		this.hpBar.renderOrder = 101;
 		this.group.add(this.hpBar);
 		this.drawHpBar(1.0);
+
+		const sc = config.scale;
+		const impGeo = new THREE.BoxGeometry(1.1 * sc, 1.85 * sc, 0.95 * sc);
+		const impMat = new THREE.MeshBasicMaterial({ color: config.bodyColor });
+		this.lodImpostor = new THREE.Mesh(impGeo, impMat);
+		this.lodImpostor.name = 'lod-impostor';
+		this.lodImpostor.position.y = 0.92 * sc;
+		this.lodImpostor.visible = false;
+		this.group.add(this.lodImpostor);
+	}
+
+	/** 플레이어와 수평 거리 기준 — 히스테리시스로 경계 플리커 완화 */
+	private updateVisualLod(horizontalDist: number): void {
+		const enter = 46;
+		const exit = 40;
+		if (!this.lodFar && horizontalDist > enter) {
+			this.lodFar = true;
+			this.setLodDetailVisible(false);
+		} else if (this.lodFar && horizontalDist < exit) {
+			this.lodFar = false;
+			this.setLodDetailVisible(true);
+		}
+	}
+
+	private setLodDetailVisible(detail: boolean): void {
+		for (const c of this.group.children) {
+			c.visible = detail ? c !== this.lodImpostor : c === this.lodImpostor;
+		}
 	}
 
 	private drawHpBar(ratio: number): void {
@@ -170,6 +202,10 @@ export class Monster {
 		const dx = targetPos.x - this.group.position.x;
 		const dz = targetPos.z - this.group.position.z;
 		const dist = Math.sqrt(dx * dx + dz * dz);
+
+		if (!this.config.isBoss) {
+			this.updateVisualLod(dist);
+		}
 
 		let moveX = 0,
 			moveZ = 0;

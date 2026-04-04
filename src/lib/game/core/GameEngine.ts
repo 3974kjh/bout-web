@@ -4,6 +4,8 @@ import { CameraController } from './CameraController';
 import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { Projectile } from '../entities/Projectile';
+import { ProjectilePool } from '../entities/projectilePool';
+import { perfSnapshot } from '../debug/perfStats';
 import { ExpShardManager } from '../entities/ExpShardManager';
 import { PlatformHealthPotion, PlatformCardCache } from '../entities/PlatformLoot';
 import { CombatSystem } from '../systems/CombatSystem';
@@ -31,6 +33,9 @@ import { playPlayerMissile } from '$lib/audio/sfx';
 
 /** 배경 4분면 쿼드를 카메라 앞에 둘 거리 */
 const BACKGROUND_QUAD_DISTANCE = 200;
+
+/** 킬 이펙트 구체 — 지오 공유(2단계), 머티리얼은 인스턴스별 dispose */
+const KILL_EFFECT_SPHERE_SHARED = new THREE.SphereGeometry(0.6, 8, 8);
 
 type BossAoeKind = NonNullable<MonsterConfig['bossAnimalType']>;
 
@@ -102,6 +107,12 @@ export class GameEngine {
 	private monsterProjCellBuckets = new Map<string, number[]>();
 	private monsterProjBucketPool: number[][] = [];
 
+	private projectilePool = new ProjectilePool();
+	/** URL `?perf=1` — 0단계 기준선 샘플링 */
+	private perfSampling = false;
+	private perfFrameCounter = 0;
+	private perfDtAccum = 0;
+
 	// 보스 AOE: 고정 외곽 링 + 중심에서 바깥으로 채워지는 원, 타격 시 보스별 연출
 	private aoeEffects: Array<{
 		rim: THREE.Mesh;
@@ -163,7 +174,9 @@ export class GameEngine {
 		const timeScale = 1 + 0.55 * Math.min(t / VICTORY_SURVIVAL_SECONDS, 1);
 		const brutal = lateGameBrutality(this.levelSystem.level);
 		const spd = d.speed * timeScale * brutal.enemyProjectileSpeedMul;
-		this.projectiles.push(new Projectile(this.scene, d.pos.clone(), d.dir.clone(), spd, d.damage, 0xff4400));
+		this.projectiles.push(
+			this.projectilePool.acquireEnemy(this.scene, d.pos.clone(), d.dir.clone(), spd, d.damage)
+		);
 	};
 	private playerHitHandler = (): void => {
 		this.camCtrl.shake(0.28, 180);
@@ -216,6 +229,9 @@ export class GameEngine {
 		EventBus.on('player-hit', this.playerHitHandler);
 		EventBus.on('player-boundary-fall', this.boundaryFallShakeHandler);
 		EventBus.on('game-pause-set', this.pauseSetHandler);
+		if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('perf') === '1') {
+			this.perfSampling = true;
+		}
 		this.animate();
 	}
 
@@ -357,6 +373,42 @@ export class GameEngine {
 				this.renderer.render(this.scene, this.camera);
 			} catch {
 				/* WebGL 컨텍스트 손실 등 */
+			}
+			if (this.perfSampling) {
+				this.perfDtAccum += dt;
+				this.perfFrameCounter++;
+				if (this.perfFrameCounter >= 45) {
+					const avgMs = (this.perfDtAccum / this.perfFrameCounter) * 1000;
+					const info = this.renderer.info.render;
+					const perfMem = performance as Performance & {
+						memory?: { usedJSHeapSize: number; totalJSHeapSize: number };
+					};
+					let jsHeapUsedMb: number | null = null;
+					let jsHeapTotalMb: number | null = null;
+					if (perfMem.memory) {
+						jsHeapUsedMb = perfMem.memory.usedJSHeapSize / (1024 * 1024);
+						jsHeapTotalMb = perfMem.memory.totalJSHeapSize / (1024 * 1024);
+					}
+					let aliveMonsters = 0;
+					for (const m of this.monsters) {
+						if (!m.isDead()) aliveMonsters++;
+					}
+					perfSnapshot.set({
+						fps: avgMs > 1e-6 ? 1000 / avgMs : 0,
+						msFrame: avgMs,
+						drawCalls: info.calls,
+						triangles: info.triangles,
+						points: info.points,
+						lines: info.lines,
+						aliveMonsters,
+						enemyProjectiles: this.projectiles.length,
+						playerProjectiles: this.playerProjectiles.length,
+						jsHeapUsedMb,
+						jsHeapTotalMb
+					});
+					this.perfDtAccum = 0;
+					this.perfFrameCounter = 0;
+				}
 			}
 			this.damageNumbers.update(dt);
 			this.updateMinimap(dt);
@@ -721,7 +773,10 @@ export class GameEngine {
 					p.alive = false;
 				}
 			}
-			if (!p.alive) { p.dispose(this.scene); this.projectiles.splice(i, 1); }
+			if (!p.alive) {
+				this.projectilePool.releaseEnemy(p, this.scene);
+				this.projectiles.splice(i, 1);
+			}
 		}
 	}
 
@@ -1189,7 +1244,7 @@ export class GameEngine {
 
 	private spawnKillEffect(pos: THREE.Vector3): void {
 		const mat = new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.9 });
-		const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), mat);
+		const mesh = new THREE.Mesh(KILL_EFFECT_SPHERE_SHARED, mat);
 		mesh.position.copy(pos).add(new THREE.Vector3(0, 1.2, 0));
 		this.scene.add(mesh);
 		this.killEffects.push({ mesh, life: 1.0 });
@@ -1201,6 +1256,7 @@ export class GameEngine {
 			ef.life -= dt * 3.5;
 			if (ef.life <= 0) {
 				this.scene.remove(ef.mesh);
+				(ef.mesh.material as THREE.MeshBasicMaterial).dispose();
 				this.killEffects.splice(i, 1);
 				continue;
 			}
@@ -1719,6 +1775,7 @@ export class GameEngine {
 		EventBus.off('boss-aoe-request', this.onBossAoeRequest);
 		for (const p of this.projectiles) p.dispose(this.scene);
 		for (const p of this.playerProjectiles) p.dispose(this.scene);
+		this.projectilePool.clear(this.scene);
 		this.expShardManager.dispose(this.scene);
 		for (const fx of this.bossStrikeAnims) {
 			for (const m of fx.meshes) {
@@ -1816,6 +1873,7 @@ export class GameEngine {
 		this.damageNumbers.destroy();
 		for (const p of this.projectiles) p.dispose(this.scene);
 		for (const p of this.playerProjectiles) p.dispose(this.scene);
+		this.projectilePool.clear(this.scene);
 		this.expShardManager.dispose(this.scene);
 		for (const ef of this.missileHitEffects) {
 			this.scene.remove(ef.mesh);
