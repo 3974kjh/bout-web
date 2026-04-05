@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { get } from 'svelte/store';
+import { inputSettings } from '$lib/stores/inputSettings';
 import { InputManager } from './InputManager';
 import { CameraController } from './CameraController';
 import { Player } from '../entities/Player';
@@ -331,7 +333,7 @@ export class GameEngine {
 
 			if (!this.isGameOver && !this.isLevelUpPaused && !this.isEscapePaused) {
 				this.simFrame++;
-				this.input.update();
+				this.input.update(get(inputSettings));
 				this.player.update(dt, this.input, this.stage);
 
 				// 생존 시간 적산 + HUD emit (500ms 주기)
@@ -367,7 +369,7 @@ export class GameEngine {
 				this.checkEnd();
 			} else if (!this.isGameOver && this.isLevelUpPaused) {
 				// 레벨업 중: 입력 처리만 (플레이어/몬스터 멈춤)
-				this.input.update();
+				this.input.update(get(inputSettings));
 			}
 
 			this.camCtrl.update(dt, this.player.group.position);

@@ -85,7 +85,12 @@
 					<h2 id="asm-title" class="asm-title">{tr($locale, 'audio.title')}</h2>
 					<p id="asm-desc" class="asm-sub">{tr($locale, 'audio.desc')}</p>
 				</div>
-				<button type="button" class="asm-close" onclick={close} aria-label={tr($locale, 'common.close')}>
+				<button
+					type="button"
+					class="asm-close"
+					onclick={close}
+					aria-label={tr($locale, 'common.close')}
+				>
 					<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
 						<path
 							fill="none"
@@ -102,13 +107,7 @@
 				<section class="asm-block">
 					<div class="asm-block__top">
 						<div class="asm-block__icon asm-block__icon--bgm" aria-hidden="true">
-							<svg viewBox="0 0 24 24" width="22" height="22">
-								<path
-									fill="currentColor"
-									d="M12 4v16l-4-3H4V7h4l4-3zm4.5 3.5c1.9 1.5 1.9 4.5 0 6l-1.1-1.1c1.1-1 1.1-2.8 0-3.8L16.5 7.5zm2.8-2.8c3.1 2.8 3.1 7.5 0 10.3l-1.1-1.1c2.5-2.3 2.5-5.8 0-8.1l1.1-1.1z"
-									opacity="0.92"
-								/>
-							</svg>
+							<img src="/images/etc/sound.svg" alt="" width="32" height="32" />
 						</div>
 						<div class="asm-block__meta">
 							<span class="asm-block__name">{tr($locale, 'audio.bgm')}</span>
@@ -133,7 +132,9 @@
 					<div class="asm-meter">
 						<div
 							class="asm-meter__fill"
-							style="width: {pct($audioSettings.bgmVolume)}%; opacity: {$audioSettings.bgmMuted ? 0.25 : 1}"
+							style="width: {pct($audioSettings.bgmVolume)}%; opacity: {$audioSettings.bgmMuted
+								? 0.25
+								: 1}"
 						></div>
 					</div>
 					<div class="asm-slider-row">
@@ -159,12 +160,7 @@
 				<section class="asm-block">
 					<div class="asm-block__top">
 						<div class="asm-block__icon asm-block__icon--sfx" aria-hidden="true">
-							<svg viewBox="0 0 24 24" width="22" height="22">
-								<path
-									fill="currentColor"
-									d="M4 10v4h3l4 3V7L7 10H4zm13.5 1c0-1.2-.5-2.3-1.2-3.1l-1.4 1.4c.4.5.6 1.1.6 1.7s-.2 1.2-.6 1.7l1.4 1.4c.7-.8 1.2-1.9 1.2-3.1zm3.5 0c0-2.3-.9-4.4-2.5-6l-1.4 1.4C19.2 7.6 20 9.2 20 11s-.8 3.4-2.1 4.6l1.4 1.4c1.6-1.6 2.5-3.7 2.5-6z"
-								/>
-							</svg>
+							<img src="/images/etc/sound.svg" alt="" width="32" height="32" />
 						</div>
 						<div class="asm-block__meta">
 							<span class="asm-block__name">{tr($locale, 'audio.sfx')}</span>
@@ -189,7 +185,9 @@
 					<div class="asm-meter">
 						<div
 							class="asm-meter__fill asm-meter__fill--sfx"
-							style="width: {pct($audioSettings.sfxVolume)}%; opacity: {$audioSettings.sfxMuted ? 0.25 : 1}"
+							style="width: {pct($audioSettings.sfxVolume)}%; opacity: {$audioSettings.sfxMuted
+								? 0.25
+								: 1}"
 						></div>
 					</div>
 					<div class="asm-slider-row">
@@ -214,7 +212,9 @@
 			</div>
 
 			<div class="asm-foot">
-				<button type="button" class="asm-done" onclick={close}>{tr($locale, 'common.confirm')}</button>
+				<button type="button" class="asm-done" onclick={close}
+					>{tr($locale, 'common.confirm')}</button
+				>
 			</div>
 		</div>
 	</div>
@@ -276,13 +276,16 @@
 		animation: asm-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
-
 	.asm-card__glow {
 		position: absolute;
 		inset: -1px;
 		border-radius: 16px;
 		pointer-events: none;
-		background: radial-gradient(ellipse 80% 55% at 50% -10%, rgba(0, 200, 255, 0.18), transparent 58%);
+		background: radial-gradient(
+			ellipse 80% 55% at 50% -10%,
+			rgba(0, 200, 255, 0.18),
+			transparent 58%
+		);
 		opacity: 0.9;
 	}
 
@@ -378,6 +381,9 @@
 	.asm-block__icon--sfx {
 		background: linear-gradient(135deg, #a78bfa, #6366f1);
 		box-shadow: 0 0 16px rgba(120, 100, 255, 0.3);
+	}
+	.asm-block__icon img {
+		filter: none;
 	}
 
 	.asm-block__meta {

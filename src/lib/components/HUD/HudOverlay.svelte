@@ -3,6 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { playUiBossWarning, playUiModalOpen } from '$lib/audio/sfx';
 	import { EventBus } from '$lib/game/bridge/EventBus';
+	import { InputManager } from '$lib/game/core/InputManager';
+	import { inputSettings } from '$lib/stores/inputSettings';
 	import {
 		getUpgradePickInfo,
 		rarityGradePoints,
@@ -12,6 +14,7 @@
 	import { getShopSettingsForGame, refreshShopSettingsForGame } from '$lib/game/shopGameCache';
 	import { appendRankRunRecordForUser } from '$lib/storage/userGameStorage';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
+	import InputSettingsModal from '$lib/components/InputSettingsModal.svelte';
 	import HudEvoMiniPreview from '$lib/components/HUD/HudEvoMiniPreview.svelte';
 	import { locale, translate as tr, numberLocaleTag } from '$lib/i18n';
 	import type { MechBase } from '$lib/domain/types';
@@ -67,8 +70,8 @@
 		// 뷰포트 직사각형
 		const vx0 = wx(viewport.x - viewport.halfW);
 		const vz0 = wz(viewport.z - viewport.halfD);
-		const vw  = viewport.halfW * 2 * scaleX;
-		const vd  = viewport.halfD * 2 * scaleZ;
+		const vw = viewport.halfW * 2 * scaleX;
+		const vd = viewport.halfD * 2 * scaleZ;
 		ctx.strokeStyle = 'rgba(255,255,255,0.25)';
 		ctx.lineWidth = 1;
 		ctx.strokeRect(vx0, vz0, vw, vd);
@@ -96,7 +99,8 @@
 
 		// 적 (빨간 점)
 		for (const m of monsters) {
-			const mx = wx(m.x), mz = wz(m.z);
+			const mx = wx(m.x),
+				mz = wz(m.z);
 			ctx.beginPath();
 			ctx.arc(mx, mz, m.isBoss ? 4 : 2.5, 0, Math.PI * 2);
 			ctx.fillStyle = m.isBoss ? '#ff4400' : '#ff2222';
@@ -104,7 +108,8 @@
 		}
 
 		// 플레이어 (밝은 삼각형 방향 표시)
-		const px = wx(player.x), pz = wz(player.z);
+		const px = wx(player.x),
+			pz = wz(player.z);
 		const angle = Math.atan2(player.fx, -player.fz);
 		ctx.save();
 		ctx.translate(px, pz);
@@ -125,8 +130,8 @@
 	}
 
 	// ── 기본 스탯 ───────────────────────────────────────────────────────────────
-	let hp     = $state(150);
-	let maxHp  = $state(150);
+	let hp = $state(150);
+	let maxHp = $state(150);
 
 	/** 획득 카드(id별) — 표시 레벨 = 동일 id 선택 시 등급 점수(커먼1/레어2/에픽3) 합 */
 	type PickedEntry = { emoji: string; name: string; points: number };
@@ -178,17 +183,17 @@
 	});
 
 	// ── 경험치 & 레벨 ───────────────────────────────────────────────────────────
-	let level    = $state(1);
-	let expProg  = $state(0);
+	let level = $state(1);
+	let expProg = $state(0);
 
 	// ── 알림 & 특수 상태 ─────────────────────────────────────────────────────────
-	let bossAlert   = $state(false);
+	let bossAlert = $state(false);
 	let bossCleared = $state(false);
-	let gameOver    = $state(false);
+	let gameOver = $state(false);
 	let goDetail = $state<GameOverDetail | null>(null);
-	let killStreak       = $state(0);
+	let killStreak = $state(0);
 	let killStreakVisible = $state(false);
-	let killStreakTimer   = 0;
+	let killStreakTimer = 0;
 
 	// ── 레벨업 / 발판 보급 카드 선택 ─────────────────────────────────────────────
 	let showCards = $state(false);
@@ -218,6 +223,7 @@
 	// ── ESC 일시정지 ───────────────────────────────────────────────────────────
 	let pauseOpen = $state(false);
 	let audioSettingsOpen = $state(false);
+	let inputSettingsOpen = $state(false);
 
 	let prevPauseOpen = false;
 	$effect(() => {
@@ -245,12 +251,14 @@
 
 	function resumeGame(): void {
 		audioSettingsOpen = false;
+		inputSettingsOpen = false;
 		pauseOpen = false;
 		EventBus.emit('game-pause-set', { paused: false });
 	}
 
 	function goMenu(): void {
 		audioSettingsOpen = false;
+		inputSettingsOpen = false;
 		pauseOpen = false;
 		EventBus.emit('game-pause-set', { paused: false });
 		goto('/');
@@ -258,19 +266,23 @@
 
 	// ── 파생 ────────────────────────────────────────────────────────────────────
 	const hpPct = $derived(maxHp > 0 ? (hp / maxHp) * 100 : 0);
-	
 
 	// ── 타이머 ──────────────────────────────────────────────────────────────────
-	let bossAlertTimer   = 0;
+	let bossAlertTimer = 0;
 	let bossClearedTimer = 0;
 
-	// ── 키보드: ESC 일시정지 / 카드 선택 ────────────────────────────────────────
+	// ── 키보드: 일시정지 / 카드 선택 ────────────────────────────────────────
 	function onKeydown(e: KeyboardEvent): void {
-		if (e.key === 'Escape') {
+		if (e.code === 'Escape') {
 			if (gameOver || showCards) return;
 			if (audioSettingsOpen) {
 				e.preventDefault();
 				audioSettingsOpen = false;
+				return;
+			}
+			if (inputSettingsOpen) {
+				e.preventDefault();
+				inputSettingsOpen = false;
 				return;
 			}
 			e.preventDefault();
@@ -278,9 +290,9 @@
 			return;
 		}
 		if (!showCards) return;
-		if (e.key === '1') selectCard(0);
-		else if (e.key === '2') selectCard(1);
-		else if (e.key === '3') selectCard(2);
+		if (e.code === 'Digit1' || e.key === '1') selectCard(0);
+		else if (e.code === 'Digit2' || e.key === '2') selectCard(1);
+		else if (e.code === 'Digit3' || e.key === '3') selectCard(2);
 	}
 
 	function selectCard(idx: number): void {
@@ -292,7 +304,8 @@
 	// ── EventBus 핸들러 ─────────────────────────────────────────────────────────
 	function onHpUpdate(...args: unknown[]): void {
 		const d = args[0] as { hp: number; maxHp: number };
-		hp = d.hp; maxHp = d.maxHp;
+		hp = d.hp;
+		maxHp = d.maxHp;
 	}
 	function onUpgradePicked(...args: unknown[]): void {
 		const { id } = args[0] as { id: string };
@@ -341,14 +354,20 @@
 	}
 	function onBossIncoming(): void {
 		playUiBossWarning();
-		bossAlert = true; bossCleared = false;
+		bossAlert = true;
+		bossCleared = false;
 		clearTimeout(bossAlertTimer);
-		bossAlertTimer = window.setTimeout(() => { bossAlert = false; }, 4000);
+		bossAlertTimer = window.setTimeout(() => {
+			bossAlert = false;
+		}, 4000);
 	}
 	function onBossCleared(): void {
-		bossAlert = false; bossCleared = true;
+		bossAlert = false;
+		bossCleared = true;
 		clearTimeout(bossClearedTimer);
-		bossClearedTimer = window.setTimeout(() => { bossCleared = false; }, 3500);
+		bossClearedTimer = window.setTimeout(() => {
+			bossCleared = false;
+		}, 3500);
 	}
 	function onGameOver(...args: unknown[]): void {
 		const d = args[0] as
@@ -369,9 +388,7 @@
 		const surv = Math.floor(d?.survivalTime ?? survivalSeconds);
 		const lv = d?.level ?? level;
 		const norm = d?.normalKills ?? killNormal;
-		const bosses: Record<BossKillKey, number> = d?.bosses
-			? { ...d.bosses }
-			: { ...killBosses };
+		const bosses: Record<BossKillKey, number> = d?.bosses ? { ...d.bosses } : { ...killBosses };
 		const sc =
 			d?.scoreTotal != null
 				? {
@@ -415,11 +432,16 @@
 		killStreak = (args[0] as { streak: number }).streak;
 		killStreakVisible = true;
 		clearTimeout(killStreakTimer);
-		killStreakTimer = window.setTimeout(() => { killStreakVisible = false; }, 2500);
+		killStreakTimer = window.setTimeout(() => {
+			killStreakVisible = false;
+		}, 2500);
 	}
 
 	function restart(): void {
-		gameOver = false; bossAlert = false; bossCleared = false; showCards = false;
+		gameOver = false;
+		bossAlert = false;
+		bossCleared = false;
+		showCards = false;
 		pauseOpen = false;
 		goDetail = null;
 		killNormal = 0;
@@ -445,47 +467,68 @@
 		syncMechBaseFromShop();
 	}
 
+	const inputManager = new InputManager();
+	let gamepadRafId = 0;
+
+	function tickGamepad(): void {
+		inputManager.update($inputSettings);
+		if (inputManager.pauseJustDown()) {
+			togglePause();
+		}
+		if (inputManager.backJustDown()) {
+			goMenu();
+		}
+		if (showCards) {
+			if (inputManager.cardSelect1JustDown()) selectCard(0);
+			else if (inputManager.cardSelect2JustDown()) selectCard(1);
+			else if (inputManager.cardSelect3JustDown()) selectCard(2);
+		}
+		gamepadRafId = requestAnimationFrame(tickGamepad);
+	}
+
 	onMount(() => {
 		syncMechBaseFromShop();
 		EventBus.on('restart-game', onRestartShopSync);
-		EventBus.on('hp-update',              onHpUpdate);
-		EventBus.on('monster-count-update',   onMonsterCount);
-		EventBus.on('survival-time-update',   onSurvivalTimeUpdate);
-		EventBus.on('exp-update',             onExpUpdate);
-		EventBus.on('level-up',             onLevelUp);
-		EventBus.on('field-card-offer',     onFieldCardOffer);
-		EventBus.on('boss-incoming',        onBossIncoming);
-		EventBus.on('boss-cleared',         onBossCleared);
-		EventBus.on('game-over',            onGameOver);
-		EventBus.on('minimap-update',       onMinimapUpdate);
-		EventBus.on('kill-stats-update',   onKillStatsUpdate);
-		EventBus.on('kill-streak',          onKillStreak);
-		EventBus.on('upgrade-picked',       onUpgradePicked);
+		EventBus.on('hp-update', onHpUpdate);
+		EventBus.on('monster-count-update', onMonsterCount);
+		EventBus.on('survival-time-update', onSurvivalTimeUpdate);
+		EventBus.on('exp-update', onExpUpdate);
+		EventBus.on('level-up', onLevelUp);
+		EventBus.on('field-card-offer', onFieldCardOffer);
+		EventBus.on('boss-incoming', onBossIncoming);
+		EventBus.on('boss-cleared', onBossCleared);
+		EventBus.on('game-over', onGameOver);
+		EventBus.on('minimap-update', onMinimapUpdate);
+		EventBus.on('kill-stats-update', onKillStatsUpdate);
+		EventBus.on('kill-streak', onKillStreak);
+		EventBus.on('upgrade-picked', onUpgradePicked);
 		window.addEventListener('keydown', onKeydown);
+		gamepadRafId = requestAnimationFrame(tickGamepad);
 	});
 	onDestroy(() => {
 		EventBus.off('restart-game', onRestartShopSync);
-		EventBus.off('hp-update',            onHpUpdate);
+		EventBus.off('hp-update', onHpUpdate);
 		EventBus.off('monster-count-update', onMonsterCount);
-		EventBus.off('survival-time-update',  onSurvivalTimeUpdate);
-		EventBus.off('exp-update',            onExpUpdate);
-		EventBus.off('level-up',             onLevelUp);
-		EventBus.off('field-card-offer',     onFieldCardOffer);
-		EventBus.off('boss-incoming',        onBossIncoming);
-		EventBus.off('boss-cleared',         onBossCleared);
-		EventBus.off('game-over',            onGameOver);
-		EventBus.off('minimap-update',       onMinimapUpdate);
-		EventBus.off('kill-stats-update',   onKillStatsUpdate);
-		EventBus.off('kill-streak',          onKillStreak);
-		EventBus.off('upgrade-picked',       onUpgradePicked);
+		EventBus.off('survival-time-update', onSurvivalTimeUpdate);
+		EventBus.off('exp-update', onExpUpdate);
+		EventBus.off('level-up', onLevelUp);
+		EventBus.off('field-card-offer', onFieldCardOffer);
+		EventBus.off('boss-incoming', onBossIncoming);
+		EventBus.off('boss-cleared', onBossCleared);
+		EventBus.off('game-over', onGameOver);
+		EventBus.off('minimap-update', onMinimapUpdate);
+		EventBus.off('kill-stats-update', onKillStatsUpdate);
+		EventBus.off('kill-streak', onKillStreak);
+		EventBus.off('upgrade-picked', onUpgradePicked);
 		window.removeEventListener('keydown', onKeydown);
+		cancelAnimationFrame(gamepadRafId);
+		inputManager.destroy();
 		clearTimeout(bossAlertTimer);
 		clearTimeout(bossClearedTimer);
 	});
 </script>
 
 <div class="hud">
-
 	<!-- ── HP 위험 비넷 (HP 30% 이하) ─────────────────────────────────────── -->
 	{#if hpPct < 30}
 		<div class="danger-vignette" style="opacity:{(1 - hpPct / 30) * 0.75};"></div>
@@ -512,7 +555,7 @@
 					</div>
 					<div class="evo-wrap">
 						{#key mechBase}
-							<HudEvoMiniPreview mechBase={mechBase} level={level} />
+							<HudEvoMiniPreview {mechBase} {level} />
 						{/key}
 						<div class="evo-label">Lv.{level}</div>
 					</div>
@@ -597,14 +640,16 @@
 		<div class="boss-banner"><span class="boss-text">{tr($locale, 'hud.bossIncoming')}</span></div>
 	{/if}
 	{#if bossCleared}
-		<div class="cleared-banner"><span class="cleared-text">{tr($locale, 'hud.bossDefeated')}</span></div>
+		<div class="cleared-banner">
+			<span class="cleared-text">{tr($locale, 'hud.bossDefeated')}</span>
+		</div>
 	{/if}
 
 	<!-- ── 일시정지 (ESC) ───────────────────────────────────────────────────── -->
 	{#if pauseOpen}
 		<div
 			class="pause-overlay"
-			class:pause-overlay--blocked={audioSettingsOpen}
+			class:pause-overlay--blocked={audioSettingsOpen || inputSettingsOpen}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="pause-title"
@@ -612,51 +657,34 @@
 			<div class="pause-modal">
 				<h2 id="pause-title">{tr($locale, 'hud.pauseTitle')}</h2>
 				<p class="pause-hint">{tr($locale, 'hud.pauseHintEsc')}</p>
-				<button
-					type="button"
-					class="pause-open-audio"
-					onclick={() => (audioSettingsOpen = true)}
-				>
-					<span class="pause-open-audio__icn" aria-hidden="true">
-						<svg viewBox="0 0 20 20" width="16" height="16" fill="none">
-							<line
-								x1="5"
-								y1="3"
-								x2="5"
-								y2="17"
-								stroke="currentColor"
-								stroke-width="1.35"
-								stroke-linecap="round"
-								opacity="0.4"
+				<div class="pause-settings-row">
+					<button
+						type="button"
+						class="pause-open-setting"
+						onclick={() => (audioSettingsOpen = true)}
+					>
+						<span class="pause-open-setting__icn" aria-hidden="true">
+							<img class="sound-img" src="/images/etc/sound.svg" alt="" width="20" height="20" />
+						</span>
+						<span class="pause-open-setting__label">{tr($locale, 'hud.audioSettings')}</span>
+					</button>
+					<button
+						type="button"
+						class="pause-open-setting"
+						onclick={() => (inputSettingsOpen = true)}
+					>
+						<span class="pause-open-setting__icn" aria-hidden="true">
+							<img
+								class="gamepad-img"
+								src="/images/etc/gamepad.svg"
+								alt=""
+								width="20"
+								height="20"
 							/>
-							<rect x="3.2" y="9" width="3.6" height="5" rx="1" fill="currentColor" />
-							<line
-								x1="10"
-								y1="3"
-								x2="10"
-								y2="17"
-								stroke="currentColor"
-								stroke-width="1.35"
-								stroke-linecap="round"
-								opacity="0.4"
-							/>
-							<rect x="8.2" y="5" width="3.6" height="5" rx="1" fill="currentColor" />
-							<line
-								x1="15"
-								y1="3"
-								x2="15"
-								y2="17"
-								stroke="currentColor"
-								stroke-width="1.35"
-								stroke-linecap="round"
-								opacity="0.4"
-							/>
-							<rect x="13.2" y="11" width="3.6" height="5" rx="1" fill="currentColor" />
-						</svg>
-					</span>
-					{tr($locale, 'hud.audioSettings')}
-					<span class="pause-open-audio__chev" aria-hidden="true">›</span>
-				</button>
+						</span>
+						<span class="pause-open-setting__label">{tr($locale, 'hud.inputSettings')}</span>
+					</button>
+				</div>
 				<div class="pause-actions">
 					<button type="button" class="pause-btn primary" onclick={resumeGame}
 						>{tr($locale, 'hud.resume')}</button
@@ -670,6 +698,7 @@
 	{/if}
 
 	<AudioSettingsModal bind:open={audioSettingsOpen} layer="game" />
+	<InputSettingsModal bind:open={inputSettingsOpen} layer="game" />
 
 	<!-- ── 레벨업 카드 선택 ─────────────────────────────────────────────────── -->
 	{#if showCards}
@@ -734,20 +763,26 @@
 				<div class="go-kill-block">
 					<div class="go-kill-title">{tr($locale, 'hud.bossKillsByWave')}</div>
 					<ul class="go-kill-list">
-						<li><span>{tr($locale, 'hud.bossBearTitle')}</span> <strong>{goDetail.bosses.bear}</strong></li>
-						<li><span>{tr($locale, 'hud.bossWolfTitle')}</span> <strong>{goDetail.bosses.wolf}</strong></li>
-						<li
-							><span>{tr($locale, 'hud.bossDragonTitle')}</span>
-							<strong>{goDetail.bosses.dragon}</strong></li
-						>
-						<li
-							><span>{tr($locale, 'hud.bossTigerTitle')}</span>
-							<strong>{goDetail.bosses.tiger}</strong></li
-						>
-						<li
-							><span>{tr($locale, 'hud.bossIronlordTitle')}</span>
-							<strong>{goDetail.bosses.ironlord}</strong></li
-						>
+						<li>
+							<span>{tr($locale, 'hud.bossBearTitle')}</span>
+							<strong>{goDetail.bosses.bear}</strong>
+						</li>
+						<li>
+							<span>{tr($locale, 'hud.bossWolfTitle')}</span>
+							<strong>{goDetail.bosses.wolf}</strong>
+						</li>
+						<li>
+							<span>{tr($locale, 'hud.bossDragonTitle')}</span>
+							<strong>{goDetail.bosses.dragon}</strong>
+						</li>
+						<li>
+							<span>{tr($locale, 'hud.bossTigerTitle')}</span>
+							<strong>{goDetail.bosses.tiger}</strong>
+						</li>
+						<li>
+							<span>{tr($locale, 'hud.bossIronlordTitle')}</span>
+							<strong>{goDetail.bosses.ironlord}</strong>
+						</li>
 					</ul>
 					<p class="go-norm-line">
 						{tr($locale, 'hud.normalKills')}
@@ -760,7 +795,9 @@
 					{/if}
 				</div>
 				<div class="go-actions">
-					<button type="button" class="go-btn" onclick={restart}>{tr($locale, 'hud.restart')}</button>
+					<button type="button" class="go-btn" onclick={restart}
+						>{tr($locale, 'hud.restart')}</button
+					>
 					<button type="button" class="go-btn go-btn-shop" onclick={goShop}
 						>{tr($locale, 'hud.shop')}</button
 					>
@@ -768,8 +805,6 @@
 			</div>
 		</div>
 	{/if}
-
-
 </div>
 
 <style>
@@ -791,7 +826,7 @@
 		padding: 12px 16px;
 	}
 
-	.left-panel  {
+	.left-panel {
 		min-width: 0;
 		max-width: min(420px, 96vw);
 		display: flex;
@@ -835,9 +870,18 @@
 		letter-spacing: 0.02em;
 		white-space: nowrap;
 	}
-	.evo-hp-cur { color: #7effb0; text-shadow: 0 0 8px rgba(0, 255, 160, 0.35); }
-	.evo-hp-sep { color: rgba(180, 200, 220, 0.55); margin: 0 1px; font-weight: 600; }
-	.evo-hp-max { color: rgba(220, 235, 255, 0.88); }
+	.evo-hp-cur {
+		color: #7effb0;
+		text-shadow: 0 0 8px rgba(0, 255, 160, 0.35);
+	}
+	.evo-hp-sep {
+		color: rgba(180, 200, 220, 0.55);
+		margin: 0 1px;
+		font-weight: 600;
+	}
+	.evo-hp-max {
+		color: rgba(220, 235, 255, 0.88);
+	}
 
 	/* 획득 카드: 7열 그리드, 넘치면 다음 행(세로 스크롤 없음) */
 	.picked-cards-grid {
@@ -871,7 +915,10 @@
 		pointer-events: auto;
 		cursor: default;
 	}
-	.chip-emoji { font-size: 0.72rem; line-height: 1; }
+	.chip-emoji {
+		font-size: 0.72rem;
+		line-height: 1;
+	}
 	.chip-lv {
 		font-variant-numeric: tabular-nums;
 		color: #88ddff;
@@ -940,16 +987,18 @@
 		font-weight: 900;
 		letter-spacing: 0.12em;
 		color: #ffffff;
-		text-shadow: 0 0 14px rgba(0,200,255,0.9), 0 0 28px rgba(0,120,255,0.5);
+		text-shadow:
+			0 0 14px rgba(0, 200, 255, 0.9),
+			0 0 28px rgba(0, 120, 255, 0.5);
 		font-variant-numeric: tabular-nums;
 		text-align: center;
 		width: 100%;
 	}
 	.time-label {
-		font-size: 0.60rem;
+		font-size: 0.6rem;
 		font-weight: 700;
 		letter-spacing: 0.22em;
-		color: rgba(0,200,255,0.75);
+		color: rgba(0, 200, 255, 0.75);
 		text-transform: uppercase;
 		text-align: center;
 		width: 100%;
@@ -976,7 +1025,13 @@
 		color: rgba(230, 248, 255, 0.95);
 		font-weight: 800;
 	}
-	.right-panel { min-width: 180px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+	.right-panel {
+		min-width: 180px;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 8px;
+	}
 
 	/* ── 진화 프리뷰 (너비 = 위 HP 블록과 동일) ── */
 	.evo-wrap {
@@ -985,23 +1040,33 @@
 		height: 110px;
 		box-sizing: border-box;
 		border-radius: 4px;
-		background: rgba(0,10,25,0.82);
-		border: 1px solid rgba(0,200,255,0.3);
-		box-shadow: 0 0 10px rgba(0,150,255,0.2);
+		background: rgba(0, 10, 25, 0.82);
+		border: 1px solid rgba(0, 200, 255, 0.3);
+		box-shadow: 0 0 10px rgba(0, 150, 255, 0.2);
 		overflow: hidden;
 	}
 	.evo-label {
-		position: absolute; top: 4px; left: 0; right: 0; bottom: auto;
+		position: absolute;
+		top: 4px;
+		left: 0;
+		right: 0;
+		bottom: auto;
 		text-align: center;
-		font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em;
-		color: #00eeff; text-shadow: 0 0 6px #0099ff;
+		font-size: 0.65rem;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		color: #00eeff;
+		text-shadow: 0 0 6px #0099ff;
 		pointer-events: none;
 	}
 
 	/* ── 일시정지 모달 ── */
 	.pause-overlay {
-		position: absolute; inset: 0;
-		display: flex; align-items: center; justify-content: center;
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		background: rgba(0, 8, 20, 0.78);
 		pointer-events: auto;
 		z-index: 80;
@@ -1033,6 +1098,59 @@
 		font-size: 0.78rem;
 		color: rgba(180, 200, 220, 0.75);
 	}
+	.pause-settings-row {
+		display: flex;
+		flex-direction: row;
+		gap: 10px;
+		align-items: stretch;
+		width: 100%;
+		margin: 0 auto 16px;
+	}
+	.pause-settings-row .pause-open-setting {
+		flex: 1;
+		margin: 0;
+	}
+	.pause-open-setting {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 12px 14px;
+		border-radius: 10px;
+		border: 1px solid rgba(0, 200, 255, 0.3);
+		background: rgba(0, 20, 40, 0.7);
+		color: rgba(160, 220, 255, 0.9);
+		font-size: 0.82rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		cursor: pointer;
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			color 0.15s;
+	}
+	.pause-open-setting:hover {
+		border-color: rgba(0, 220, 255, 0.55);
+		background: rgba(0, 40, 70, 0.7);
+		color: #b8f8ff;
+	}
+	.pause-open-setting__icn {
+		display: flex;
+		flex-shrink: 0;
+		opacity: 0.9;
+	}
+	.pause-open-setting__icn img {
+		filter: brightness(0) invert(1);
+	}
+	.pause-open-setting__icn .sound-img {
+		filter: brightness(0) invert(1);
+	}
+	.pause-open-setting__icn .gamepad-img {
+		filter: brightness(0) invert(1);
+	}
+	.pause-open-setting__label {
+		white-space: nowrap;
+	}
 	.pause-actions {
 		display: flex;
 		flex-direction: column;
@@ -1048,7 +1166,10 @@
 		border: 1px solid rgba(100, 150, 190, 0.45);
 		background: rgba(0, 0, 0, 0.35);
 		color: rgba(200, 215, 235, 0.9);
-		transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+		transition:
+			border-color 0.15s,
+			color 0.15s,
+			box-shadow 0.15s;
 	}
 	.pause-btn:hover {
 		border-color: #6af;
@@ -1062,59 +1183,43 @@
 	.pause-btn.primary:hover {
 		box-shadow: 0 0 16px rgba(0, 200, 255, 0.35);
 	}
-	.pause-open-audio {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 6px;
-		margin: 0 auto 16px;
-		padding: 0;
-		border: none;
-		background: none;
-		font: inherit;
-		font-size: 0.78rem;
-		font-weight: 600;
-		color: rgba(120, 210, 255, 0.88);
-		cursor: pointer;
-		text-decoration: underline;
-		text-decoration-color: rgba(0, 200, 255, 0.35);
-		text-underline-offset: 3px;
-		transition: color 0.15s;
-	}
-	.pause-open-audio:hover {
-		color: #bff;
-		text-decoration-color: rgba(0, 230, 255, 0.55);
-	}
-	.pause-open-audio__icn {
-		display: flex;
-		flex-shrink: 0;
-		opacity: 0.92;
-	}
-	.pause-open-audio__chev {
-		font-size: 1.05em;
-		font-weight: 300;
-		opacity: 0.75;
-		transform: translateY(-0.5px);
-	}
 
 	/* ── 미니맵 ── */
 	.minimap-wrap {
-		position: relative; width: 160px; height: 160px;
-		border-radius: 4px; overflow: hidden;
-		box-shadow: 0 0 12px rgba(0,200,255,0.3), 0 0 4px rgba(0,0,0,0.8);
+		position: relative;
+		width: 160px;
+		height: 160px;
+		border-radius: 4px;
+		overflow: hidden;
+		box-shadow:
+			0 0 12px rgba(0, 200, 255, 0.3),
+			0 0 4px rgba(0, 0, 0, 0.8);
 	}
-	.minimap-canvas { display: block; width: 160px; height: 160px; }
+	.minimap-canvas {
+		display: block;
+		width: 160px;
+		height: 160px;
+	}
 	.minimap-label {
-		position: absolute; bottom: 2px; left: 4px;
-		font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
-		color: rgba(0,200,255,0.5); pointer-events: none;
+		position: absolute;
+		bottom: 2px;
+		left: 4px;
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		color: rgba(0, 200, 255, 0.5);
+		pointer-events: none;
 	}
 
 	/* ── EXP 바 ── */
 	.exp-bar-wrap {
-		position: absolute; bottom: 0; left: 0; right: 0;
-		height: 20px; background: rgba(0,0,0,0.5);
-		border-top: 1px solid rgba(0,200,255,0.2);
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 20px;
+		background: rgba(0, 0, 0, 0.5);
+		border-top: 1px solid rgba(0, 200, 255, 0.2);
 	}
 	.exp-bar-fill {
 		height: 100%;
@@ -1123,33 +1228,62 @@
 		transition: width 0.3s ease-out;
 	}
 	.exp-label {
-		position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-		font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
-		color: rgba(255,255,255,0.7); text-shadow: 1px 1px 2px #000;
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		color: rgba(255, 255, 255, 0.7);
+		text-shadow: 1px 1px 2px #000;
 		pointer-events: none;
 	}
 
 	/* ── 레벨업 카드 오버레이 ── */
 	.card-overlay {
-		position: absolute; inset: 0;
-		display: flex; align-items: center; justify-content: center;
-		background: rgba(0,0,0,0.72);
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 0, 0, 0.72);
 		pointer-events: auto;
 		backdrop-filter: blur(2px);
 	}
 	.card-modal {
-		display: flex; flex-direction: column; align-items: center; gap: 16px;
-		padding: 32px 24px 28px; max-width: 900px; width: 95%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 16px;
+		padding: 32px 24px 28px;
+		max-width: 900px;
+		width: 95%;
 	}
 	.card-title {
-		font-size: 2rem; font-weight: 900; letter-spacing: 0.12em;
+		font-size: 2rem;
+		font-weight: 900;
+		letter-spacing: 0.12em;
 		color: #ffdd44;
-		text-shadow: 0 0 20px #ffaa00, 0 0 40px #ff8800, 2px 2px 4px #000;
+		text-shadow:
+			0 0 20px #ffaa00,
+			0 0 40px #ff8800,
+			2px 2px 4px #000;
 		animation: titlePulse 0.9s ease-in-out infinite alternate;
 	}
-	@keyframes titlePulse { to { text-shadow: 0 0 30px #ffcc00, 0 0 60px #ffaa00, 2px 2px 4px #000; } }
+	@keyframes titlePulse {
+		to {
+			text-shadow:
+				0 0 30px #ffcc00,
+				0 0 60px #ffaa00,
+				2px 2px 4px #000;
+		}
+	}
 	.card-hint {
-		font-size: 0.85rem; color: #aaa; margin: 0;
+		font-size: 0.85rem;
+		color: #aaa;
+		margin: 0;
 		text-shadow: 1px 1px 2px #000;
 	}
 	.card-row {
@@ -1179,7 +1313,10 @@
 		overflow: hidden;
 		animation: cardDealY 0.72s cubic-bezier(0.2, 0.85, 0.32, 1) both;
 		animation-delay: calc(var(--card-i, 0) * 0.12s);
-		transition: transform 0.18s ease-out, box-shadow 0.18s ease-out, filter 0.18s ease-out;
+		transition:
+			transform 0.18s ease-out,
+			box-shadow 0.18s ease-out,
+			filter 0.18s ease-out;
 		box-shadow:
 			0 0 0 2px rgba(10, 12, 20, 0.95),
 			0 0 0 4px rgba(255, 210, 80, 0.5),
@@ -1295,7 +1432,9 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		font-family: 'Arial Black', 'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
-		text-shadow: 0 0 12px rgba(255, 255, 255, 0.25), 0 2px 4px #000;
+		text-shadow:
+			0 0 12px rgba(255, 255, 255, 0.25),
+			0 2px 4px #000;
 	}
 	.card-desc {
 		font-size: 0.78rem;
@@ -1324,60 +1463,122 @@
 		animation: bossFlash 0.5s ease-in-out infinite alternate;
 	}
 	.boss-text {
-		font-size: 2.2rem; font-weight: 900; letter-spacing: 0.15em; color: #ff4400;
-		text-shadow: 0 0 20px #ff2200, 0 0 40px #ff0000, 2px 2px 4px #000;
+		font-size: 2.2rem;
+		font-weight: 900;
+		letter-spacing: 0.15em;
+		color: #ff4400;
+		text-shadow:
+			0 0 20px #ff2200,
+			0 0 40px #ff0000,
+			2px 2px 4px #000;
 	}
-	@keyframes bossFlash { to { opacity: 0.4; } }
+	@keyframes bossFlash {
+		to {
+			opacity: 0.4;
+		}
+	}
 
 	.cleared-banner {
-		position: absolute; top: 38%; left: 50%; transform: translateX(-50%);
+		position: absolute;
+		top: 38%;
+		left: 50%;
+		transform: translateX(-50%);
 		animation: slideFade 3.5s ease-out forwards;
 	}
 	.cleared-text {
-		font-size: 1.5rem; font-weight: 800; letter-spacing: 0.1em; color: #44ff88; white-space: nowrap;
-		text-shadow: 0 0 16px #22dd66, 2px 2px 4px #000;
+		font-size: 1.5rem;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		color: #44ff88;
+		white-space: nowrap;
+		text-shadow:
+			0 0 16px #22dd66,
+			2px 2px 4px #000;
 	}
 	@keyframes slideFade {
-		0%   { opacity: 0; transform: translateX(-50%) translateY(20px); }
-		15%  { opacity: 1; transform: translateX(-50%) translateY(0); }
-		75%  { opacity: 1; }
-		100% { opacity: 0; }
+		0% {
+			opacity: 0;
+			transform: translateX(-50%) translateY(20px);
+		}
+		15% {
+			opacity: 1;
+			transform: translateX(-50%) translateY(0);
+		}
+		75% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+		}
 	}
 
 	/* ── HP 위험 비넷 ── */
 	.danger-vignette {
-		position: absolute; inset: 0; pointer-events: none;
-		background: radial-gradient(ellipse at center, transparent 35%, rgba(220,20,20,0.82) 100%);
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		background: radial-gradient(ellipse at center, transparent 35%, rgba(220, 20, 20, 0.82) 100%);
 		animation: dangerPulse 0.7s ease-in-out infinite alternate;
 	}
-	@keyframes dangerPulse { to { opacity: 0.55; } }
+	@keyframes dangerPulse {
+		to {
+			opacity: 0.55;
+		}
+	}
 
 	/* ── 킬 스트릭 ── */
 	.streak-banner {
-		position: absolute; top: 42%; left: 50%; transform: translateX(-50%);
-		font-size: 1.8rem; font-weight: 900; letter-spacing: 0.12em; color: #ff8800;
-		text-shadow: 0 0 20px #ff4400, 2px 2px 4px #000;
+		position: absolute;
+		top: 42%;
+		left: 50%;
+		transform: translateX(-50%);
+		font-size: 1.8rem;
+		font-weight: 900;
+		letter-spacing: 0.12em;
+		color: #ff8800;
+		text-shadow:
+			0 0 20px #ff4400,
+			2px 2px 4px #000;
 		animation: streakIn 2.5s ease-out forwards;
 		pointer-events: none;
 	}
 	@keyframes streakIn {
-		0%   { opacity: 0; transform: translateX(-50%) scale(1.4); }
-		10%  { opacity: 1; transform: translateX(-50%) scale(1.0); }
-		70%  { opacity: 1; }
-		100% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
+		0% {
+			opacity: 0;
+			transform: translateX(-50%) scale(1.4);
+		}
+		10% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1);
+		}
+		70% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+			transform: translateX(-50%) translateY(-30px);
+		}
 	}
 
 	/* ── 게임 오버 ── */
 	.overlay {
-		position: absolute; inset: 0;
-		display: flex; align-items: center; justify-content: center;
-		background: rgba(0,0,0,0.65); pointer-events: auto;
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 0, 0, 0.65);
+		pointer-events: auto;
 	}
 	.box {
-		text-align: center; padding: 2.5rem 3.5rem;
-		border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+		text-align: center;
+		padding: 2.5rem 3.5rem;
+		border-radius: 12px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
 	}
-	.box.over { background: rgba(60,20,20,0.92); }
+	.box.over {
+		background: rgba(60, 20, 20, 0.92);
+	}
 	.box.go-box.go-victory {
 		background: rgba(16, 52, 40, 0.94);
 		border-color: rgba(0, 220, 150, 0.28);
@@ -1393,9 +1594,21 @@
 		padding: 1.75rem 2rem 2rem;
 		text-align: left;
 	}
-	.box h2   { margin: 0 0 0.5rem; font-size: 2.2rem; letter-spacing: 0.15em; color: #ff5555; text-align: center; }
-	.box p    { margin: 0 0 0.4rem; color: #ccc; }
-	.box p strong { color: #66ccff; font-size: 1.3rem; }
+	.box h2 {
+		margin: 0 0 0.5rem;
+		font-size: 2.2rem;
+		letter-spacing: 0.15em;
+		color: #ff5555;
+		text-align: center;
+	}
+	.box p {
+		margin: 0 0 0.4rem;
+		color: #ccc;
+	}
+	.box p strong {
+		color: #66ccff;
+		font-size: 1.3rem;
+	}
 	.go-score-line {
 		text-align: center;
 		font-size: 1rem;
@@ -1422,9 +1635,20 @@
 		color: #9aa;
 		letter-spacing: 0.04em;
 	}
-	.go-part { color: #b8e8ff; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-	.go-inline-meta { font-size: 0.9rem; color: #aaa; }
-	.go-inline-meta strong { font-size: inherit; color: #8cf; }
+	.go-part {
+		color: #b8e8ff;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+	}
+	.go-inline-meta {
+		font-size: 0.9rem;
+		color: #aaa;
+	}
+	.go-inline-meta strong {
+		font-size: inherit;
+		color: #8cf;
+	}
 	.go-kill-block {
 		margin: 0.85rem 0 1.25rem;
 		padding: 0.75rem 0.9rem;
@@ -1468,7 +1692,10 @@
 		font-size: 0.82rem;
 		color: #bbb;
 	}
-	.go-norm-line strong { font-size: 0.95rem; color: #9f9; }
+	.go-norm-line strong {
+		font-size: 0.95rem;
+		color: #9f9;
+	}
 	.go-wave-hint {
 		margin: 0.35rem 0 0 !important;
 		font-size: 0.65rem;
@@ -1491,7 +1718,10 @@
 		color: #6af;
 		border-radius: 6px;
 		cursor: pointer;
-		transition: background 0.2s, color 0.2s, border-color 0.2s;
+		transition:
+			background 0.2s,
+			color 0.2s,
+			border-color 0.2s;
 	}
 	.go-btn:hover {
 		background: #6af;
@@ -1507,10 +1737,18 @@
 		border-color: rgba(255, 220, 160, 0.95);
 	}
 	.box button {
-		padding: 0.6rem 2rem; font-size: 1rem; font-weight: 600;
-		border: 2px solid #6af; background: transparent; color: #6af;
-		border-radius: 6px; cursor: pointer; transition: all 0.2s;
+		padding: 0.6rem 2rem;
+		font-size: 1rem;
+		font-weight: 600;
+		border: 2px solid #6af;
+		background: transparent;
+		color: #6af;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.2s;
 	}
-	.box button:hover { background: #6af; color: #111; }
-
+	.box button:hover {
+		background: #6af;
+		color: #111;
+	}
 </style>

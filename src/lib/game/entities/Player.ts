@@ -601,11 +601,9 @@ export class Player {
 	// ── 이동 ──────────────────────────────────────────────────────────────────
 
 	private move(dt: number, input: InputManager, stage: StageQuery): void {
-		let dx = 0, dz = 0;
-		if (input.isDown('KeyW') || input.isDown('ArrowUp'))    dz = -1;
-		if (input.isDown('KeyS') || input.isDown('ArrowDown'))  dz = 1;
-		if (input.isDown('KeyA') || input.isDown('ArrowLeft'))  dx = -1;
-		if (input.isDown('KeyD') || input.isDown('ArrowRight')) dx = 1;
+		const m = input.getMoveXZ();
+		let dx = m.x;
+		let dz = m.z;
 
 		const moving = dx !== 0 || dz !== 0;
 		this.moveIntent = moving;
@@ -677,7 +675,7 @@ export class Player {
 
 	private tryDash(input: InputManager, _stage: StageQuery): void {
 		if (this.dashCooldown > 0 || this.state === 'dead') return;
-		if (!input.justDown('ShiftLeft') && !input.justDown('ShiftRight')) return;
+		if (!input.dashJustDown()) return;
 
 		// 대쉬 방향: 이동 방향 우선, 없으면 바라보는 방향
 		let dir = this.moveVelocity.clone().setY(0);
@@ -699,8 +697,7 @@ export class Player {
 	// ── 점프 ──────────────────────────────────────────────────────────────────
 
 	private jump(input: InputManager): void {
-		const wantJump = input.justDown('KeyC') || input.justDown('Space');
-		if (!wantJump) return;
+		if (!input.jumpJustDown()) return;
 
 		if (this.isOnGround) {
 			this.velocityY = JUMP_FORCE;

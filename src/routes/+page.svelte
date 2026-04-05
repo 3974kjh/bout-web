@@ -3,14 +3,18 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
+	import InputSettingsModal from '$lib/components/InputSettingsModal.svelte';
 	import PlayerAvatar from '$lib/components/rank/PlayerAvatar.svelte';
 	import {
 		avatarUrlFromUserMetadata,
 		loginDisplayIdFromUser
 	} from '$lib/storage/supabase/sessionUser';
 	import { locale, translate as tr } from '$lib/i18n';
+	import { inputSettings } from '$lib/stores/inputSettings';
+	import { formatKeyboardCode } from '$lib/input/keyCodeLabel';
 
 	let audioSettingsOpen = $state(false);
+	let inputSettingsOpen = $state(false);
 
 	onMount(() => {
 		const html = document.documentElement;
@@ -75,11 +79,7 @@
 								stroke-linejoin="round"
 								d="M4 8.5h16v9H4v-9zm2 0V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1.5M9 21v-3.5h6V21"
 							/>
-							<path
-								fill="currentColor"
-								d="M8 12h2v2H8v-2zm6 0h2v2h-2v-2z"
-								opacity="0.85"
-							/>
+							<path fill="currentColor" d="M8 12h2v2H8v-2zm6 0h2v2h-2v-2z" opacity="0.85" />
 						</svg>
 						<span class="btn-shop-label">{tr($locale, 'home.shopLabel')}</span>
 					</span>
@@ -118,53 +118,47 @@
 	<footer class="foot">
 		<button type="button" class="foot-audio-open" onclick={() => (audioSettingsOpen = true)}>
 			<span class="foot-audio-open__icn" aria-hidden="true">
-				<svg viewBox="0 0 20 20" width="14" height="14" fill="none">
-					<line
-						x1="5"
-						y1="3"
-						x2="5"
-						y2="17"
-						stroke="currentColor"
-						stroke-width="1.35"
-						stroke-linecap="round"
-						opacity="0.4"
-					/>
-					<rect x="3.2" y="9" width="3.6" height="5" rx="1" fill="currentColor" />
-					<line
-						x1="10"
-						y1="3"
-						x2="10"
-						y2="17"
-						stroke="currentColor"
-						stroke-width="1.35"
-						stroke-linecap="round"
-						opacity="0.4"
-					/>
-					<rect x="8.2" y="5" width="3.6" height="5" rx="1" fill="currentColor" />
-					<line
-						x1="15"
-						y1="3"
-						x2="15"
-						y2="17"
-						stroke="currentColor"
-						stroke-width="1.35"
-						stroke-linecap="round"
-						opacity="0.4"
-					/>
-					<rect x="13.2" y="11" width="3.6" height="5" rx="1" fill="currentColor" />
-				</svg>
+				<img class="sound-img" src="/images/etc/sound.svg" alt="" width="14" height="14" />
 			</span>
 			{tr($locale, 'home.audioOpen')}
+		</button>
+		<span class="foot-sep" aria-hidden="true">·</span>
+		<button type="button" class="foot-audio-open" onclick={() => (inputSettingsOpen = true)}>
+			<span class="foot-audio-open__icn" aria-hidden="true">
+				<img class="gamepad-img" src="/images/etc/gamepad.svg" alt="" width="14" height="14" />
+			</span>
+			{tr($locale, 'home.inputOpen')}
 		</button>
 	</footer>
 
 	<section class="controls" aria-label={tr($locale, 'home.controlsAria')}>
 		<h2 class="controls-title">{tr($locale, 'home.controlsTitle')}</h2>
 		<dl class="control-grid">
-			<div><dt>{tr($locale, 'home.move')}</dt><dd>W A S D</dd></div>
-			<div><dt>{tr($locale, 'home.jump')}</dt><dd>Space · C</dd></div>
-			<div><dt>{tr($locale, 'home.dash')}</dt><dd>Shift</dd></div>
-			<div><dt>{tr($locale, 'home.pause')}</dt><dd>Esc</dd></div>
+			<div>
+				<dt>{tr($locale, 'home.move')}</dt>
+				<dd>
+					{formatKeyboardCode($inputSettings.keyboard.moveUp)}
+					{formatKeyboardCode($inputSettings.keyboard.moveLeft)}
+					{formatKeyboardCode($inputSettings.keyboard.moveDown)}
+					{formatKeyboardCode($inputSettings.keyboard.moveRight)}
+				</dd>
+			</div>
+			<div>
+				<dt>{tr($locale, 'home.jump')}</dt>
+				<dd>
+					{formatKeyboardCode($inputSettings.keyboard.jumpPrimary)} · {formatKeyboardCode(
+						$inputSettings.keyboard.jumpSecondary
+					)}
+				</dd>
+			</div>
+			<div>
+				<dt>{tr($locale, 'home.dash')}</dt>
+				<dd>{formatKeyboardCode($inputSettings.keyboard.dash)}</dd>
+			</div>
+			<div>
+				<dt>{tr($locale, 'home.pause')}</dt>
+				<dd>Esc</dd>
+			</div>
 		</dl>
 	</section>
 
@@ -192,7 +186,14 @@
 				<a href="/login" class="btn-login">
 					<span class="btn-login__main">
 						<svg class="btn-login__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-							<circle cx="12" cy="9" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5" />
+							<circle
+								cx="12"
+								cy="9"
+								r="3.25"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+							/>
 							<path
 								fill="none"
 								stroke="currentColor"
@@ -210,6 +211,7 @@
 	</section>
 
 	<AudioSettingsModal bind:open={audioSettingsOpen} layer="landing" />
+	<InputSettingsModal bind:open={inputSettingsOpen} layer="landing" />
 </main>
 
 <style>
@@ -360,7 +362,12 @@
 		padding: 0.35rem 0.85rem;
 		border-radius: 2px;
 		border: 1px solid rgba(255, 80, 40, 0.45);
-		background: linear-gradient(90deg, rgba(40, 8, 0, 0.75), rgba(20, 30, 50, 0.85), rgba(40, 8, 0, 0.75));
+		background: linear-gradient(
+			90deg,
+			rgba(40, 8, 0, 0.75),
+			rgba(20, 30, 50, 0.85),
+			rgba(40, 8, 0, 0.75)
+		);
 		box-shadow:
 			0 0 20px rgba(255, 60, 0, 0.2),
 			inset 0 0 0 1px rgba(255, 200, 120, 0.08);
@@ -515,7 +522,9 @@
 		box-shadow:
 			0 0 0 1px rgba(0, 220, 255, 0.45),
 			0 0 28px rgba(0, 180, 255, 0.25);
-		transition: transform 0.15s ease, box-shadow 0.15s ease;
+		transition:
+			transform 0.15s ease,
+			box-shadow 0.15s ease;
 	}
 
 	.btn-shop {
@@ -539,7 +548,14 @@
 			inset 0 0 0 1px rgba(0, 200, 255, 0.38),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06),
 			0 4px 14px rgba(0, 0, 0, 0.35);
-		clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+		clip-path: polygon(
+			0 0,
+			calc(100% - 10px) 0,
+			100% 10px,
+			100% 100%,
+			10px 100%,
+			0 calc(100% - 10px)
+		);
 		transition:
 			box-shadow 0.16s ease,
 			color 0.16s ease,
@@ -602,7 +618,14 @@
 			inset 0 0 0 1px rgba(255, 200, 100, 0.35),
 			inset 0 1px 0 rgba(255, 255, 255, 0.06),
 			0 4px 14px rgba(0, 0, 0, 0.35);
-		clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+		clip-path: polygon(
+			0 0,
+			calc(100% - 10px) 0,
+			100% 10px,
+			100% 100%,
+			10px 100%,
+			0 calc(100% - 10px)
+		);
 		transition:
 			box-shadow 0.16s ease,
 			color 0.16s ease,
@@ -660,8 +683,7 @@
 		text-decoration: none;
 		color: rgba(215, 225, 235, 0.95);
 		background:
-			linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 42%),
-			rgba(4, 8, 16, 0.72);
+			linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 42%), rgba(4, 8, 16, 0.72);
 		box-shadow:
 			inset 0 1px 0 rgba(255, 255, 255, 0.07),
 			0 2px 12px rgba(0, 0, 0, 0.45);
@@ -675,8 +697,7 @@
 		color: #f2f8ff;
 		border-color: rgba(160, 200, 230, 0.38);
 		background:
-			linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 45%),
-			rgba(12, 20, 36, 0.88);
+			linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 45%), rgba(12, 20, 36, 0.88);
 		box-shadow:
 			inset 0 1px 0 rgba(255, 255, 255, 0.1),
 			0 4px 18px rgba(0, 0, 0, 0.5);
@@ -742,8 +763,7 @@
 		justify-content: center;
 		gap: 0.5rem 0.75rem;
 		background:
-			linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, transparent 40%),
-			rgba(4, 8, 16, 0.72);
+			linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, transparent 40%), rgba(4, 8, 16, 0.72);
 		box-shadow:
 			inset 0 1px 0 rgba(255, 255, 255, 0.06),
 			0 2px 12px rgba(0, 0, 0, 0.45);
@@ -797,8 +817,12 @@
 	}
 
 	@keyframes sheen {
-		0% { background-position: 200% 0; }
-		100% { background-position: -200% 0; }
+		0% {
+			background-position: 200% 0;
+		}
+		100% {
+			background-position: -200% 0;
+		}
 	}
 
 	.cta:hover {
@@ -888,7 +912,12 @@
 		position: absolute;
 		inset: 4px;
 		border-radius: 50%;
-		background: conic-gradient(from 0deg, transparent 0 340deg, rgba(0, 255, 200, 0.35) 350deg, transparent 360deg);
+		background: conic-gradient(
+			from 0deg,
+			transparent 0 340deg,
+			rgba(0, 255, 200, 0.35) 350deg,
+			transparent 360deg
+		);
 		animation: radar-spin 3.2s linear infinite;
 	}
 	@keyframes radar-spin {
@@ -1033,6 +1062,15 @@
 		display: flex;
 		flex-shrink: 0;
 		opacity: 0.88;
+	}
+	.foot-audio-open__icn img {
+		filter: brightness(0) invert(1);
+	}
+	.foot-audio-open__icn .sound-img {
+		filter: brightness(0) invert(1);
+	}
+	.foot-audio-open__icn .gamepad-img {
+		filter: brightness(0) invert(1);
 	}
 	.foot-audio-open:hover {
 		color: rgba(170, 230, 255, 0.95);
