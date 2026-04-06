@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import AudioSettingsModal from '$lib/components/AudioSettingsModal.svelte';
+	import GameGuideModal from '$lib/components/GameGuideModal.svelte';
 	import InputSettingsModal from '$lib/components/InputSettingsModal.svelte';
 	import PlayerAvatar from '$lib/components/rank/PlayerAvatar.svelte';
 	import {
@@ -14,6 +15,7 @@
 	import { formatKeyboardCode } from '$lib/input/keyCodeLabel';
 
 	let audioSettingsOpen = $state(false);
+	let gameGuideOpen = $state(false);
 	let inputSettingsOpen = $state(false);
 
 	onMount(() => {
@@ -116,6 +118,26 @@
 	</section>
 
 	<footer class="foot">
+		<button type="button" class="foot-audio-open" onclick={() => (gameGuideOpen = true)}>
+			<span class="foot-audio-open__icn" aria-hidden="true">
+				<svg
+					viewBox="0 0 24 24"
+					width="14"
+					height="14"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+					<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+					<path d="M8 7h8M8 11h6" />
+				</svg>
+			</span>
+			{tr($locale, 'home.guideOpen')}
+		</button>
+		<span class="foot-sep" aria-hidden="true">·</span>
 		<button type="button" class="foot-audio-open" onclick={() => (audioSettingsOpen = true)}>
 			<span class="foot-audio-open__icn" aria-hidden="true">
 				<img class="sound-img" src="/images/etc/sound.svg" alt="" width="14" height="14" />
@@ -211,6 +233,7 @@
 	</section>
 
 	<AudioSettingsModal bind:open={audioSettingsOpen} layer="landing" />
+	<GameGuideModal bind:open={gameGuideOpen} layer="landing" />
 	<InputSettingsModal bind:open={inputSettingsOpen} layer="landing" />
 </main>
 
