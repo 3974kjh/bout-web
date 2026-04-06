@@ -700,7 +700,29 @@
 	.asm-body--scroll {
 		overflow-y: auto;
 		flex: 1;
-		padding-right: 4px;
+		padding-right: 6px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(0, 200, 255, 0.3) transparent;
+	}
+
+	.asm-body--scroll::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.asm-body--scroll::-webkit-scrollbar-track {
+		background: transparent;
+		margin: 2px 0;
+	}
+
+	.asm-body--scroll::-webkit-scrollbar-thumb {
+		background: linear-gradient(180deg, rgba(0, 200, 255, 0.45), rgba(0, 140, 200, 0.3));
+		border-radius: 999px;
+		border: 1px solid rgba(0, 200, 255, 0.15);
+	}
+
+	.asm-body--scroll::-webkit-scrollbar-thumb:hover {
+		background: linear-gradient(180deg, rgba(0, 230, 255, 0.6), rgba(0, 180, 220, 0.45));
+		box-shadow: 0 0 8px rgba(0, 200, 255, 0.35);
 	}
 
 	.asm-block {
